@@ -17,8 +17,6 @@ from custom_components.beurer_freshhome.api import (
     BeurerConnectionError,
 )
 from custom_components.beurer_freshhome.const import (
-    CONF_CLIENT_SECRET,
-    DEFAULT_CLIENT_SECRET,
     DOMAIN,
 )
 
