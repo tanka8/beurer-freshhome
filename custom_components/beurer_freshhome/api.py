@@ -30,9 +30,9 @@ from .const import (
     AUTH_VERSION,
     BORDER_VALUES_URL,
     CLIENT_ID,
-    CLIENT_SECRET,
     CMD_SOURCE,
     CMD_VERSION,
+    DEFAULT_CLIENT_SECRET,
     DEVICES_URL,
     HUB_NEGOTIATE_URL,
     HUB_URL,
@@ -54,20 +54,60 @@ class BeurerError(Exception):
 
 
 class BeurerAuthError(BeurerError):
-    """Credentials or token rejected."""
+    """The user's email or password was rejected."""
+
+
+class BeurerClientSecretError(BeurerError):
+    """The app-level client_secret was rejected.
+
+    Distinct from BeurerAuthError on purpose. OAuth2 reports a bad client_secret as
+    `invalid_client` and bad user credentials as `invalid_grant`, so the two are
+    distinguishable - and telling them apart matters, because a stale client_secret
+    affects every user at once and is fixed by the override, not by the user
+    re-typing a password that was never wrong.
+    """
 
 
 class BeurerConnectionError(BeurerError):
     """The cloud could not be reached."""
 
 
+def _token_error(status: int, body: str) -> BeurerError:
+    """Classify a rejected token request.
+
+    OAuth2 puts a machine-readable reason in the body. Falling back to a plain auth
+    error when it is missing keeps behaviour sane against a server that does not
+    follow the spec.
+    """
+    try:
+        error = json.loads(body).get("error", "")
+    except (json.JSONDecodeError, AttributeError):
+        error = ""
+
+    if error == "invalid_client":
+        return BeurerClientSecretError(
+            "The app client_secret was rejected. Beurer has most likely rotated it; "
+            "a replacement can be set on the integration without a new release."
+        )
+    if error == "invalid_grant":
+        return BeurerAuthError("Email or password rejected")
+    return BeurerAuthError(f"Credentials rejected ({status}{': ' + error if error else ''})")
+
+
 class BeurerAuth:
     """Holds the OAuth2 tokens and refreshes them before they expire."""
 
-    def __init__(self, session: aiohttp.ClientSession, email: str, password: str):
+    def __init__(
+        self,
+        session: aiohttp.ClientSession,
+        email: str,
+        password: str,
+        client_secret: str | None = None,
+    ):
         self._session = session
         self._email = email
         self._password = password
+        self._client_secret = client_secret or DEFAULT_CLIENT_SECRET
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at: float = 0.0
@@ -105,7 +145,7 @@ class BeurerAuth:
     async def _request(self, extra: dict[str, str]) -> None:
         data = {
             "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
+            "client_secret": self._client_secret,
             "scope": SCOPE,
             "version": AUTH_VERSION,
             **extra,
@@ -114,7 +154,7 @@ class BeurerAuth:
             async with self._session.post(TOKEN_URL, data=data) as resp:
                 body = await resp.text()
                 if resp.status in (400, 401):
-                    raise BeurerAuthError(f"Credentials rejected ({resp.status})")
+                    raise _token_error(resp.status, body)
                 if resp.status != 200:
                     raise BeurerConnectionError(f"Token endpoint returned {resp.status}")
                 payload = json.loads(body)

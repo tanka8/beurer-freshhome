@@ -8,10 +8,22 @@ from dataclasses import dataclass, field
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
+    ConfigEntryError,
+    ConfigEntryNotReady,
+)
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from .api import BeurerAuth, BeurerAuthError, BeurerClient, BeurerConnectionError, BeurerHub
+from .api import (
+    BeurerAuth,
+    BeurerAuthError,
+    BeurerClient,
+    BeurerClientSecretError,
+    BeurerConnectionError,
+    BeurerHub,
+)
+from .const import client_secret_from_options
 from .coordinator import BeurerCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,11 +56,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
     # One session for the whole entry: the hub's Azure App Service affinity cookie
     # is set at negotiate and has to still be present on the WebSocket upgrade.
     session = async_create_clientsession(hass)
-    auth = BeurerAuth(session, email, password)
+    auth = BeurerAuth(session, email, password, client_secret_from_options(entry.options))
     client = BeurerClient(session, auth)
 
     try:
         devices = await client.async_list_devices(email)
+    except BeurerClientSecretError as err:
+        # Not the user's password. Sending them to reauth would have them retype a
+        # password that was never wrong; the fix is the override in the options.
+        raise ConfigEntryError(str(err)) from err
     except BeurerAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except BeurerConnectionError as err:
@@ -74,6 +90,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
     for coordinator in coordinators:
         await coordinator.async_wait_first_status()
 
+    # Changing the client_secret override must rebuild the connection.
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
@@ -92,3 +111,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> b
             await coordinator.async_shutdown()
         await entry.runtime_data.hub.async_stop()
     return unloaded
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> None:
+    """Reload when the options change."""
+    await hass.config_entries.async_reload(entry.entry_id)

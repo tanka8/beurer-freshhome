@@ -8,7 +8,12 @@ SSO_BASE = "https://sso.connect.beurer.com"
 API_BASE = "https://freshhome.connect.beurer.com"
 TOKEN_URL = f"{SSO_BASE}/connect/token"
 CLIENT_ID = "beurersso"
-CLIENT_SECRET = "xm(n%TJe:~6s#5Sw"
+
+# Lifted from the FreshHome app. It is the same for every user of that app - it is
+# not an account secret - but it IS Beurer's to change. If they ever rotate it, every
+# install breaks at once, so it can be overridden per config entry without waiting
+# for a new release. See CONF_CLIENT_SECRET.
+DEFAULT_CLIENT_SECRET = "xm(n%TJe:~6s#5Sw"
 SCOPE = "sso offline_access freshhome"
 AUTH_VERSION = "2"
 
@@ -66,6 +71,18 @@ AIR_QUALITY_LABELS = {1: "good", 2: "moderate", 3: "poor", 4: "very_poor"}
 # The app sends "moderate " with a trailing space - a bug on its side; the server
 # stores it trimmed, so the clean value is what we send.
 PM_SENSITIVITIES = ["sensitive", "standard", "moderate"]
+
+# Optional per-entry override for DEFAULT_CLIENT_SECRET.
+CONF_CLIENT_SECRET = "client_secret"
+
+
+def client_secret_from_options(options) -> str:
+    """The secret an entry should use.
+
+    An override stored in the entry's options wins over the value bundled with the
+    release, so a rotation by Beurer can be worked around without waiting for one.
+    """
+    return options.get(CONF_CLIENT_SECRET) or DEFAULT_CLIENT_SECRET
 
 MODE_AUTO = "auto"
 MODE_MANUAL = "manual"

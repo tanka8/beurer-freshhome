@@ -91,6 +91,22 @@ Auth is an OAuth2 password grant against `https://sso.connect.beurer.com/connect
 The `client_id` and `client_secret` in `const.py` are constants embedded in the app,
 identical for every FreshHome user - they are not account secrets.
 
+### If sign-in suddenly stops working for everyone
+
+That `client_secret` belongs to Beurer, and they can change it whenever they like.
+If they do, every install fails at once - so it can be replaced **without waiting for
+a new release**:
+
+**Settings, Devices & services, Beurer FreshHome, Configure** - paste the new value
+into *App client secret override*. Leave it blank to go back to the bundled one.
+
+The integration tells the two failure modes apart rather than making you guess: OAuth2
+reports a bad app secret as `invalid_client` and a bad password as `invalid_grant`, so
+a rotation says the client secret was rejected instead of claiming your password is
+wrong. If you hit this, please check the
+[issues](https://github.com/tanka8/beurer-freshhome/issues) - someone has probably
+already posted the new value.
+
 **One WebSocket per account**, not per device: it receives every device's frames and
 dispatches by device id. Both the negotiate call and the upgrade share one `aiohttp`
 session on purpose, because Azure App Service sets an affinity cookie at negotiate and

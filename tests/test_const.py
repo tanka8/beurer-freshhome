@@ -27,3 +27,11 @@ def test_top_speed_is_labelled_turbo():
 def test_speed_names_round_trip():
     names = const.fan_speed_names("LR500")
     assert {v: k for k, v in names.items()}["turbo"] == 5
+
+
+def test_client_secret_override():
+    """A rotation by Beurer must be fixable without a release."""
+    assert const.client_secret_from_options({}) == const.DEFAULT_CLIENT_SECRET
+    assert const.client_secret_from_options({"client_secret": "new"}) == "new"
+    # Blank means "fall back to the bundled value", not "send an empty secret".
+    assert const.client_secret_from_options({"client_secret": ""}) == const.DEFAULT_CLIENT_SECRET

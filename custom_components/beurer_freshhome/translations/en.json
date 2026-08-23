@@ -20,7 +20,8 @@
     "error": {
       "invalid_auth": "Invalid email or password.",
       "cannot_connect": "Could not reach the Beurer cloud.",
-      "no_devices": "That account has no devices registered."
+      "no_devices": "That account has no devices registered.",
+      "invalid_client_secret": "The app client secret was rejected. Beurer has probably changed it. Check the integration's GitHub issues for a replacement value, then set it under the integration's Configure option."
     },
     "abort": {
       "already_configured": "This account is already set up.",
@@ -97,6 +98,23 @@
       "night_mode": {
         "name": "Night mode"
       }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Advanced",
+        "description": "Leave blank unless sign-in has started failing with a client secret error. Beurer can change the value the app uses; a replacement can be set here without waiting for a new release.",
+        "data": {
+          "client_secret": "App client secret override"
+        }
+      }
+    },
+    "error": {
+      "invalid_client_secret": "That client secret was also rejected.",
+      "invalid_auth": "The stored email or password is no longer valid.",
+      "cannot_connect": "Could not reach the Beurer cloud.",
+      "no_devices": "That account has no devices registered."
     }
   }
 }
