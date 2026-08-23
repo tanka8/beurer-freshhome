@@ -111,6 +111,7 @@ Two fields are not what they look like:
 ## Tests
 
 ```bash
+pip install pytest aiohttp
 python -m pytest tests/
 ```
 
