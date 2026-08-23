@@ -10,6 +10,7 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.beurer_freshhome.api import (
     BeurerAuthError,
@@ -104,19 +105,12 @@ async def test_recovers_after_an_error(hass):
 
 
 async def test_duplicate_account_aborts(hass):
-    entry = config_entries.ConfigEntry(
-        version=1,
-        minor_version=1,
+    """The same Beurer account must not be addable twice."""
+    MockConfigEntry(
         domain=DOMAIN,
-        title="user@example.com",
         data=CREDENTIALS,
-        source=config_entries.SOURCE_USER,
         unique_id="user@example.com",
-        options={},
-        discovery_keys={},
-        subentries_data=(),
-    )
-    entry.add_to_hass(hass)
+    ).add_to_hass(hass)
 
     result = await _start(hass)
     with patch(LIST_DEVICES, return_value=[DEVICE]):
