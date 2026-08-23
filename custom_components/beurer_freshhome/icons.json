@@ -1,0 +1,39 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "filter_replace": {
+        "default": "mdi:air-filter"
+      }
+    },
+    "select": {
+      "mode": {
+        "default": "mdi:auto-mode"
+      },
+      "fan_speed": {
+        "default": "mdi:fan"
+      },
+      "auto_sensitivity": {
+        "default": "mdi:tune"
+      }
+    },
+    "sensor": {
+      "fan_speed": {
+        "default": "mdi:fan"
+      },
+      "filter_left": {
+        "default": "mdi:air-filter"
+      },
+      "timer": {
+        "default": "mdi:timer-outline"
+      }
+    },
+    "switch": {
+      "uv": {
+        "default": "mdi:lightbulb-fluorescent-tube"
+      },
+      "night_mode": {
+        "default": "mdi:weather-night"
+      }
+    }
+  }
+}

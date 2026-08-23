@@ -22,7 +22,7 @@ import aiohttp
 
 # Import the integration's api module without needing Home Assistant installed.
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from tests.loader import load_module  # noqa: E402
+from tests.loader import load_module
 
 _api = load_module("api")
 BeurerAuth = _api.BeurerAuth
@@ -32,10 +32,7 @@ BeurerConnectionError = _api.BeurerConnectionError
 BeurerHub = _api.BeurerHub
 
 
-async def main() -> int:
-    email = input("Beurer email: ").strip()
-    password = getpass.getpass("Beurer password (not echoed, not stored): ")
-
+async def main(email: str, password: str) -> int:
     async with aiohttp.ClientSession() as session:
         auth = BeurerAuth(session, email, password)
         client = BeurerClient(session, auth)
@@ -72,7 +69,7 @@ async def main() -> int:
         await hub.async_start()
         try:
             await asyncio.wait_for(got.wait(), timeout=45)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print("  FAILED: connected but no status frame within 45s")
             print("  (is the purifier powered on and online?)")
             await hub.async_stop()
@@ -98,4 +95,8 @@ async def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    # Prompt before the event loop starts - input() blocks, and blocking inside an
+    # async function stalls everything else on the loop.
+    _email = input("Beurer email: ").strip()
+    _password = getpass.getpass("Beurer password (not echoed, not stored): ")
+    raise SystemExit(asyncio.run(main(_email, _password)))

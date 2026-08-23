@@ -24,6 +24,10 @@ from . import BeurerConfigEntry
 from .const import AIR_QUALITY_LABELS
 from .entity import BeurerEntity
 
+# Commands all travel over the one shared WebSocket and are cheap, so there is no
+# reason to serialise them. Nothing here polls.
+PARALLEL_UPDATES = 0
+
 
 def _temperature(status: dict) -> float | None:
     """Decode the reported temperature.
@@ -110,7 +114,6 @@ SENSORS: tuple[BeurerSensorDescription, ...] = (
         translation_key="fan_speed",
         requires="fan",
         state_class=SensorStateClass.MEASUREMENT,
-        icon="mdi:fan",
         # Numeric rather than the label, so it graphs and compares. 0 means off.
         value_fn=lambda s: s.get("fan"),
     ),
@@ -119,7 +122,6 @@ SENSORS: tuple[BeurerSensorDescription, ...] = (
         translation_key="filter_left",
         requires="filterLeft",
         native_unit_of_measurement=UnitOfTime.HOURS,
-        icon="mdi:air-filter",
         value_fn=lambda s: s.get("filterLeft"),
     ),
     BeurerSensorDescription(
@@ -127,7 +129,6 @@ SENSORS: tuple[BeurerSensorDescription, ...] = (
         translation_key="timer",
         requires="timerMin",
         native_unit_of_measurement=UnitOfTime.MINUTES,
-        icon="mdi:timer-outline",
         value_fn=lambda s: s.get("timerMin"),
     ),
 )

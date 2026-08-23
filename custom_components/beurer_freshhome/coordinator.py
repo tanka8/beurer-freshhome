@@ -71,7 +71,7 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
             await asyncio.wait_for(
                 self._first_status.wait(), timeout=FIRST_STATUS_TIMEOUT
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             _LOGGER.info(
                 "No status from %s within %ss; assuming the default entity set",
                 self.device_id,
@@ -90,6 +90,19 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
             return True
         return key in self.data
 
+    async def async_send_command(self, function: str, value: int) -> None:
+        """Send a command, surfacing failures the way Home Assistant expects.
+
+        Entity actions must raise HomeAssistantError; anything else is reported to
+        the user as an unhandled traceback rather than a readable message.
+        """
+        try:
+            await self.hub.async_send_command(self.device_id, function, value)
+        except BeurerError as err:
+            raise HomeAssistantError(
+                f"Could not reach the Beurer cloud to set {function}: {err}"
+            ) from err
+
     async def async_set_sensitivity(self, value: str) -> None:
         """Change the auto-mode particle sensitivity, then re-read it."""
         if not self.border_values:
@@ -99,9 +112,12 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
                 "Beurer: current settings unknown, refusing to overwrite them"
             )
 
-        await self.client.async_set_border_values(
-            self.border_values, devicePmSensitivity=value
-        )
+        try:
+            await self.client.async_set_border_values(
+                self.border_values, devicePmSensitivity=value
+            )
+        except BeurerError as err:
+            raise HomeAssistantError(f"Could not change sensitivity: {err}") from err
         await self.async_refresh_border_values()
         self.async_update_listeners()
 

@@ -23,6 +23,10 @@ from .const import (
 )
 from .entity import BeurerEntity
 
+# Commands all travel over the one shared WebSocket and are cheap, so there is no
+# reason to serialise them. Nothing here polls.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -46,7 +50,6 @@ class BeurerModeSelect(BeurerEntity, SelectEntity):
     """Auto or manual."""
 
     _attr_translation_key = "mode"
-    _attr_icon = "mdi:auto-mode"
     _attr_options = MODES
 
     def __init__(self, coordinator):
@@ -59,8 +62,8 @@ class BeurerModeSelect(BeurerEntity, SelectEntity):
         return MODE_AUTO if self.status.get("mode") else "manual"
 
     async def async_select_option(self, option: str) -> None:
-        await self.coordinator.hub.async_send_command(
-            self.coordinator.device_id, FN_MODE, 1 if option == MODE_AUTO else 0
+        await self.coordinator.async_send_command(
+            FN_MODE, 1 if option == MODE_AUTO else 0
         )
 
 
@@ -68,7 +71,6 @@ class BeurerFanSpeedSelect(BeurerEntity, SelectEntity):
     """The numbered speeds. Reports what is running, including auto's choice."""
 
     _attr_translation_key = "fan_speed"
-    _attr_icon = "mdi:fan"
 
     def __init__(self, coordinator):
         super().__init__(coordinator, "fan_speed")
@@ -85,13 +87,10 @@ class BeurerFanSpeedSelect(BeurerEntity, SelectEntity):
         speed = self._name_to_speed.get(option)
         if speed is None:
             return
-        device_id = self.coordinator.device_id
-        hub = self.coordinator.hub
-
         # Choosing a speed by hand means leaving auto, or auto overrides it again.
         if self.status.get("mode"):
-            await hub.async_send_command(device_id, FN_MODE, 0)
-        await hub.async_send_command(device_id, FN_FAN, speed)
+            await self.coordinator.async_send_command(FN_MODE, 0)
+        await self.coordinator.async_send_command(FN_FAN, speed)
 
 
 class BeurerSensitivitySelect(BeurerEntity, SelectEntity):
@@ -102,7 +101,6 @@ class BeurerSensitivitySelect(BeurerEntity, SelectEntity):
     """
 
     _attr_translation_key = "auto_sensitivity"
-    _attr_icon = "mdi:tune"
     _attr_options = PM_SENSITIVITIES
     _attr_entity_category = EntityCategory.CONFIG
 

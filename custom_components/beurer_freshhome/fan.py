@@ -25,6 +25,10 @@ from .const import (
 )
 from .entity import BeurerEntity
 
+# Commands all travel over the one shared WebSocket and are cheap, so there is no
+# reason to serialise them. Nothing here polls.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -116,6 +120,4 @@ class BeurerFan(BeurerEntity, FanEntity):
         await self._send(FN_MODE, 1 if preset_mode == MODE_AUTO else 0)
 
     async def _send(self, function: str, value: int) -> None:
-        await self.coordinator.hub.async_send_command(
-            self.coordinator.device_id, function, value
-        )
+        await self.coordinator.async_send_command(function, value)

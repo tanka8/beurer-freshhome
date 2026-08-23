@@ -12,6 +12,10 @@ from . import BeurerConfigEntry
 from .const import FN_SLEEP, FN_UV
 from .entity import BeurerEntity
 
+# Commands all travel over the one shared WebSocket and are cheap, so there is no
+# reason to serialise them. Nothing here polls.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -42,21 +46,16 @@ class _BeurerToggle(BeurerEntity, SwitchEntity):
         return bool(self.status.get(self._status_key))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.hub.async_send_command(
-            self.coordinator.device_id, self._function, 1
-        )
+        await self.coordinator.async_send_command(self._function, 1)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.hub.async_send_command(
-            self.coordinator.device_id, self._function, 0
-        )
+        await self.coordinator.async_send_command(self._function, 0)
 
 
 class BeurerUVSwitch(_BeurerToggle):
     """The UV-C lamp."""
 
     _attr_translation_key = "uv"
-    _attr_icon = "mdi:lightbulb-fluorescent-tube"
     _function = FN_UV
     _status_key = "uv"
 
@@ -72,7 +71,6 @@ class BeurerNightModeSwitch(_BeurerToggle):
     """
 
     _attr_translation_key = "night_mode"
-    _attr_icon = "mdi:weather-night"
     _function = FN_SLEEP
     _status_key = "sleep"
 

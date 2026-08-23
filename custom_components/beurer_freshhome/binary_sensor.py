@@ -12,6 +12,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BeurerConfigEntry
 from .entity import BeurerEntity
 
+# Commands all travel over the one shared WebSocket and are cheap, so there is no
+# reason to serialise them. Nothing here polls.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,7 +34,6 @@ class BeurerFilterProblem(BeurerEntity, BinarySensorEntity):
 
     _attr_translation_key = "filter_replace"
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
-    _attr_icon = "mdi:air-filter"
 
     def __init__(self, coordinator):
         super().__init__(coordinator, "filter_replace")

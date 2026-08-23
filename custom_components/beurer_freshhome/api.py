@@ -19,6 +19,7 @@ listener discarded the frames that were not its own.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -250,6 +251,9 @@ class BeurerHub:
         self._task: asyncio.Task | None = None
         self._connected = asyncio.Event()
         self._listeners: dict[str, list[StatusCallback]] = {}
+        # Log a dropped connection once rather than on every retry; a device that is
+        # simply switched off should not fill the log at increasing intervals.
+        self._reported_disconnect = False
         self._connection_listeners: list[Callable[[], None]] = []
 
     @property
@@ -282,10 +286,8 @@ class BeurerHub:
     async def async_stop(self) -> None:
         if self._task:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
             self._task = None
         if self._ws and not self._ws.closed:
             await self._ws.close()
@@ -299,7 +301,7 @@ class BeurerHub:
             # A reconnect may be in flight; give it a moment before giving up.
             try:
                 await asyncio.wait_for(self._connected.wait(), timeout=10)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise BeurerConnectionError("Not connected to the Beurer hub") from None
 
         inner = json.dumps(
@@ -328,15 +330,21 @@ class BeurerHub:
                 backoff = 5
             except asyncio.CancelledError:
                 raise
-            except Exception as err:  # noqa: BLE001 - the loop must survive
+            except Exception as err:
                 # A closed session means the config entry is going away; retrying
                 # would spin forever against something that can never recover.
                 if self._session.closed:
                     _LOGGER.debug("Beurer hub stopping: session closed")
                     return
-                _LOGGER.warning(
-                    "Beurer hub connection lost (%s); retrying in %ss", err, backoff
-                )
+                if self._reported_disconnect:
+                    _LOGGER.debug(
+                        "Beurer hub still unreachable (%s); retrying in %ss", err, backoff
+                    )
+                else:
+                    _LOGGER.warning(
+                        "Beurer hub connection lost (%s); retrying in %ss", err, backoff
+                    )
+                    self._reported_disconnect = True
             finally:
                 was_connected = self._connected.is_set()
                 self._connected.clear()
@@ -372,7 +380,11 @@ class BeurerHub:
             )
             self._connected.set()
             self._notify_connection_change()
-            _LOGGER.debug("Connected to the Beurer message hub")
+            if self._reported_disconnect:
+                _LOGGER.info("Beurer hub connection restored")
+                self._reported_disconnect = False
+            else:
+                _LOGGER.debug("Connected to the Beurer message hub")
 
             async for msg in ws:
                 if msg.type is aiohttp.WSMsgType.TEXT:
