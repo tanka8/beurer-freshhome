@@ -128,12 +128,20 @@ Two fields are not what they look like:
 
 ```bash
 pip install pytest aiohttp
-python -m pytest tests/
+python -m pytest                 # tests/ - no Home Assistant needed, any platform
 ```
 
-The suite replays real captured SignalR frames through the parser - no credentials, no
-network. It covers the status decoding, per-device dispatch, that command echoes are
-not mistaken for state, and that keepalive pings are answered.
+`tests/` replays real captured SignalR frames through the parser, with no network and
+no credentials. It covers the status decoding, per-device dispatch, that command
+echoes are not mistaken for state, that keepalive pings are answered, the model
+fallbacks, and the classification of rejected token requests.
+
+`tests_ha/` runs the config flow through Home Assistant itself using
+`pytest-homeassistant-custom-component`. **That harness does not work on Windows** -
+its autouse fixtures need a socketpair that `pytest-socket` blocks - so those run on
+Linux in CI. See `tests_ha/README.md`.
+
+CI also runs `ruff check`, `ruff format --check` and Home Assistant's `hassfest`.
 
 `scripts/check_connection.py` is a manual end-to-end check against the real cloud. It
 prompts for credentials and is read-only - it never sends a command.
@@ -149,6 +157,15 @@ prompts for credentials and is read-only - it never sends a command.
   the write endpoint is known.
 * Schedules (`/api/deviceSchedules/*`) and history (`/api/devices/statistics`) are
   mapped but unused.
+* **Devices are read once, at setup.** Add a purifier to your Beurer account and Home
+  Assistant will not see it until the integration is reloaded; remove one and its
+  device lingers.
+* Error messages are hardcoded English rather than translation keys.
+* The client secret override uses an options flow; current Home Assistant guidance
+  leans toward a reconfigure flow.
+* Not listed in `home-assistant/brands`, so the HACS brands check cannot pass. The
+  HACS job in CI is informational for that reason - make it blocking once the
+  repository is public and brands are submitted.
 
 ## A caveat worth stating
 
