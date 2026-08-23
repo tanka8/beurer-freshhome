@@ -35,9 +35,7 @@ async def async_get_config_entry_diagnostics(
                 # The raw frame, verbatim apart from the id - this is the bit worth
                 # pasting into an issue for an unsupported model.
                 "status": async_redact_data(coordinator.data or {}, REDACT_DEVICE),
-                "settings": async_redact_data(
-                    coordinator.border_values, REDACT_DEVICE
-                ),
+                "settings": async_redact_data(coordinator.border_values, REDACT_DEVICE),
             }
             for coordinator in data.coordinators
         ],

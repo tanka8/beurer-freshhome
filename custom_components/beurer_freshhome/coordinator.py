@@ -55,9 +55,7 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
             )
         except BeurerError as err:
             # Not fatal: the rest of the device works without these.
-            _LOGGER.warning(
-                "Could not read settings for %s: %s", self.device_id, err
-            )
+            _LOGGER.warning("Could not read settings for %s: %s", self.device_id, err)
 
     async def async_wait_first_status(self) -> dict | None:
         """Wait briefly for the first status frame.

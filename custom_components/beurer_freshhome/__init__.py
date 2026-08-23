@@ -56,7 +56,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
     # One session for the whole entry: the hub's Azure App Service affinity cookie
     # is set at negotiate and has to still be present on the WebSocket upgrade.
     session = async_create_clientsession(hass)
-    auth = BeurerAuth(session, email, password, client_secret_from_options(entry.options))
+    auth = BeurerAuth(
+        session, email, password, client_secret_from_options(entry.options)
+    )
     client = BeurerClient(session, auth)
 
     try:
@@ -75,9 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
 
     # One hub per ACCOUNT. It receives every device's frames and dispatches them.
     hub = BeurerHub(session, auth)
-    coordinators = [
-        BeurerCoordinator(hass, hub, client, device) for device in devices
-    ]
+    coordinators = [BeurerCoordinator(hass, hub, client, device) for device in devices]
     entry.runtime_data = BeurerRuntimeData(hub=hub, coordinators=coordinators)
 
     for coordinator in coordinators:

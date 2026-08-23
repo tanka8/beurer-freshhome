@@ -34,4 +34,7 @@ def test_client_secret_override():
     assert const.client_secret_from_options({}) == const.DEFAULT_CLIENT_SECRET
     assert const.client_secret_from_options({"client_secret": "new"}) == "new"
     # Blank means "fall back to the bundled value", not "send an empty secret".
-    assert const.client_secret_from_options({"client_secret": ""}) == const.DEFAULT_CLIENT_SECRET
+    assert (
+        const.client_secret_from_options({"client_secret": ""})
+        == const.DEFAULT_CLIENT_SECRET
+    )

@@ -149,9 +149,5 @@ class BeurerOptionsFlow(OptionsFlow):
                 )
 
         current = entry.options.get(CONF_CLIENT_SECRET, "")
-        schema = vol.Schema(
-            {vol.Optional(CONF_CLIENT_SECRET, default=current): str}
-        )
-        return self.async_show_form(
-            step_id="init", data_schema=schema, errors=errors
-        )
+        schema = vol.Schema({vol.Optional(CONF_CLIENT_SECRET, default=current): str})
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

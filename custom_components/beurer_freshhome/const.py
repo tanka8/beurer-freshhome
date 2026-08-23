@@ -84,6 +84,7 @@ def client_secret_from_options(options) -> str:
     """
     return options.get(CONF_CLIENT_SECRET) or DEFAULT_CLIENT_SECRET
 
+
 MODE_AUTO = "auto"
 MODE_MANUAL = "manual"
 MODES = [MODE_AUTO, MODE_MANUAL]

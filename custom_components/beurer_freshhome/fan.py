@@ -114,7 +114,9 @@ class BeurerFan(BeurerEntity, FanEntity):
         if self.status.get("mode"):
             await self._send(FN_MODE, 0)
 
-        await self._send(FN_FAN, percentage_to_ordered_list_item(self._speeds, percentage))
+        await self._send(
+            FN_FAN, percentage_to_ordered_list_item(self._speeds, percentage)
+        )
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         await self._send(FN_MODE, 1 if preset_mode == MODE_AUTO else 0)

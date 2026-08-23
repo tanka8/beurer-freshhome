@@ -92,7 +92,9 @@ def _token_error(status: int, body: str) -> BeurerError:
         )
     if error == "invalid_grant":
         return BeurerAuthError("Email or password rejected")
-    return BeurerAuthError(f"Credentials rejected ({status}{': ' + error if error else ''})")
+    return BeurerAuthError(
+        f"Credentials rejected ({status}{': ' + error if error else ''})"
+    )
 
 
 class BeurerAuth:
@@ -131,7 +133,9 @@ class BeurerAuth:
                     )
                     return self._access_token  # type: ignore[return-value]
                 except BeurerAuthError:
-                    _LOGGER.debug("Refresh token rejected, falling back to a full login")
+                    _LOGGER.debug(
+                        "Refresh token rejected, falling back to a full login"
+                    )
                     self._refresh_token = None
 
             await self._request(
@@ -157,7 +161,9 @@ class BeurerAuth:
                 if resp.status in (400, 401):
                     raise _token_error(resp.status, body)
                 if resp.status != 200:
-                    raise BeurerConnectionError(f"Token endpoint returned {resp.status}")
+                    raise BeurerConnectionError(
+                        f"Token endpoint returned {resp.status}"
+                    )
                 payload = json.loads(body)
         except aiohttp.ClientError as err:
             raise BeurerConnectionError(f"Cannot reach Beurer SSO: {err}") from err
@@ -338,7 +344,9 @@ class BeurerHub:
                     return
                 if self._reported_disconnect:
                     _LOGGER.debug(
-                        "Beurer hub still unreachable (%s); retrying in %ss", err, backoff
+                        "Beurer hub still unreachable (%s); retrying in %ss",
+                        err,
+                        backoff,
                     )
                 else:
                     _LOGGER.warning(
