@@ -1,0 +1,102 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Beurer FreshHome",
+        "description": "Sign in with the same account you use in the beurer FreshHome app.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The password for {email} was rejected. Enter it again.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email or password.",
+      "cannot_connect": "Could not reach the Beurer cloud.",
+      "no_devices": "That account has no devices registered."
+    },
+    "abort": {
+      "already_configured": "This account is already set up.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "filter_replace": {
+        "name": "Filter"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "auto": "Auto",
+          "manual": "Manual"
+        }
+      },
+      "fan_speed": {
+        "name": "Fan speed",
+        "state": {
+          "1": "1",
+          "2": "2",
+          "3": "3",
+          "4": "4",
+          "5": "5",
+          "turbo": "Turbo"
+        }
+      },
+      "auto_sensitivity": {
+        "name": "Auto sensitivity",
+        "state": {
+          "sensitive": "Sensitive",
+          "standard": "Standard",
+          "moderate": "Moderate"
+        }
+      }
+    },
+    "sensor": {
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "air_quality": {
+        "name": "Air quality",
+        "state": {
+          "good": "Good",
+          "moderate": "Moderate",
+          "poor": "Poor",
+          "very_poor": "Very poor"
+        }
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "temperature": {
+        "name": "Temperature"
+      },
+      "fan_speed": {
+        "name": "Fan speed"
+      },
+      "filter_left": {
+        "name": "Filter life remaining"
+      },
+      "timer": {
+        "name": "Timer"
+      }
+    },
+    "switch": {
+      "uv": {
+        "name": "UV lamp"
+      },
+      "night_mode": {
+        "name": "Night mode"
+      }
+    }
+  }
+}

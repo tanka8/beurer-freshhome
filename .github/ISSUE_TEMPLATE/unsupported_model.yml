@@ -1,0 +1,34 @@
+name: Unsupported or misbehaving model
+description: Your Beurer device is not an LR-500, or some entities are wrong
+labels: ["model-support"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This integration was reverse engineered against an **LR-500**. Other models
+        report different fields and speed ranges, so the most useful thing you can
+        attach is the raw status frame.
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: "LR 501"
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Settings → Devices & services → Beurer FreshHome → the three dots →
+        Download diagnostics. Device ids and your email are already redacted.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+      description: Which entity, what it shows, and what the app shows instead.
+    validations:
+      required: true

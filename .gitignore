@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Capture artefacts - these contain real credentials and device identifiers
+*.mitm
+sanitised.jsonl
+apk/
+beurer_freshhome.tar.gz
+*.tar.gz

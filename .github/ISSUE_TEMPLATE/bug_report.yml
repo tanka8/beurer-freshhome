@@ -1,0 +1,24 @@
+name: Bug report
+description: Something is broken
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: >
+        Settings → System → Logs, filtered to beurer_freshhome. Please check for
+        anything that looks like a token before pasting.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Integration version
+    validations:
+      required: true
