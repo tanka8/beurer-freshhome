@@ -5,6 +5,12 @@ body:
   - type: markdown
     attributes:
       value: |
+        Before you start: this is a hobby project with **no promise of support**, and
+        it talks to an undocumented API that Beurer can break at any time. Issues are
+        welcome and read, but a reply is a favour rather than a commitment.
+  - type: markdown
+    attributes:
+      value: |
         This integration was reverse engineered against an **LR-500**. Other models
         report different fields and speed ranges, so the most useful thing you can
         attach is the raw status frame.

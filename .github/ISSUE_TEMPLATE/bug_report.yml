@@ -2,6 +2,12 @@ name: Bug report
 description: Something is broken
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you start: this is a hobby project with **no promise of support**, and
+        it talks to an undocumented API that Beurer can break at any time. Issues are
+        welcome and read, but a reply is a favour rather than a commitment.
   - type: textarea
     id: what
     attributes:

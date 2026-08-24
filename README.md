@@ -167,10 +167,25 @@ prompts for credentials and is read-only - it never sends a command.
   HACS job in CI is informational for that reason - make it blocking once the
   repository is public and brands are submitted.
 
-## A caveat worth stating
+## How this was built, and what to expect from it
 
-This talks to an undocumented API. Beurer can change or break it at any time, and
-nothing here is endorsed by or affiliated with Beurer.
+Most of the work here - reverse engineering the protocol from a proxied capture of
+the FreshHome app, writing the integration and its tests, and this README - was done
+by **Claude**, Anthropic's AI assistant. I directed it, made the calls it asked me to
+make, tested against my own device, and I run the result at home. I am not presenting
+it as my own unaided work.
+
+**I make no ownership claim over any of it.** MIT licensed, take it, fork it, do what
+you like. Nothing here is Beurer's, endorsed by Beurer, or affiliated with them.
+
+**There is no promise of support.** This scratched an itch in my house. I may fix
+things, I may not, and I may lose interest entirely. It talks to an undocumented API
+that Beurer can break whenever they like, and if that happens I make no commitment to
+chase it. Issues and pull requests are welcome, but please treat a response as a
+favour rather than an expectation.
+
+If that is not a footing you are comfortable relying on, fork it - genuinely, that is
+the sensible move for anything you actually depend on.
 
 ## Licence
 
