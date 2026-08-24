@@ -80,6 +80,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
     hub = BeurerHub(session, auth)
     # A credential failure once running must reach the user, not just the log.
     hub.on_auth_error = lambda: entry.async_start_reauth(hass)
+    # A client_secret rotation is not the user's password, so reauth is the wrong
+    # prompt. Reloading puts it back through setup, which raises ConfigEntryError
+    # with the message naming the override.
+    hub.on_client_secret_error = lambda: hass.config_entries.async_schedule_reload(
+        entry.entry_id
+    )
     coordinators = [BeurerCoordinator(hass, hub, client, device) for device in devices]
     entry.runtime_data = BeurerRuntimeData(hub=hub, coordinators=coordinators)
 
@@ -99,7 +105,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     except Exception:
-        # Otherwise the hub is left running against an entry that never loaded.
+        # Otherwise the hub and the coordinators' availability timers are left
+        # running against an entry that never loaded.
+        for coordinator in coordinators:
+            await coordinator.async_shutdown()
         await hub.async_stop()
         raise
 

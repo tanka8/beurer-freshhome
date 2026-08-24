@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Once the repository is public anyone can open a pull request, and every job here
+# only ever reads the checkout.
+permissions:
+  contents: read
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
@@ -43,11 +48,10 @@ jobs:
 
   hacs:
     runs-on: ubuntu-latest
-    # Informational only. Several of its checks cannot pass yet: brands requires
-    # being listed in home-assistant/brands, and while this repository is private
-    # the action cannot read manifest.json or hacs.json to validate them. Make this
-    # blocking once the repository is public and brands are submitted.
-    continue-on-error: true
+    # Blocking. The brands check is satisfied by the icons in the integration's
+    # brand/ directory, so nothing here depends on an upstream pull request any
+    # more, and the action can read manifest.json and hacs.json now that the
+    # repository is public.
     steps:
       - uses: actions/checkout@v4
       - uses: hacs/action@main

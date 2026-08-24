@@ -7,7 +7,7 @@ Verifies, against the real cloud:
 
 Read-only - it never sends a command, so your purifier is not touched.
 
-    python test_client.py
+    python scripts/check_connection.py
 """
 
 from __future__ import annotations

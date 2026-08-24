@@ -187,6 +187,67 @@ def test_auth_failure_stops_retrying_and_asks_for_reauth():
     assert asked == [True], "reauth was not requested"
 
 
+def test_a_rotated_client_secret_is_not_treated_as_a_password_problem():
+    """A rotated app secret must stop the loop and say so.
+
+    It is not a BeurerAuthError, so before this it fell through to the generic
+    handler and the hub retried silently forever - the one failure mode the
+    override exists to fix, and the user would never have been told about it.
+    """
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+    reloaded = []
+    asked_for_password = []
+    hub.on_client_secret_error = lambda: reloaded.append(True)
+    hub.on_auth_error = lambda: asked_for_password.append(True)
+
+    async def rejected():
+        raise api.BeurerClientSecretError("rotated")
+
+    hub._connect_and_pump = rejected
+
+    async def run():
+        await asyncio.wait_for(hub._run(), timeout=2)
+
+    asyncio.run(run())
+    assert reloaded == [True], "the entry was not reloaded"
+    assert not asked_for_password, "reauth would ask for a password that is fine"
+
+
+def test_sending_without_a_socket_raises_a_beurer_error():
+    """Entity actions rely on this being a BeurerError.
+
+    The coordinator translates BeurerError into HomeAssistantError; anything else
+    reaches the user as an unhandled traceback.
+    """
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+    hub._connected.set()  # connected as far as the caller can tell
+
+    async def run():
+        await hub.async_send_command(DEVICE_ID, const.FN_POWER, 1)
+
+    with pytest.raises(api.BeurerConnectionError):
+        asyncio.run(run())
+
+
+def test_a_socket_that_dies_mid_send_raises_a_beurer_error():
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+
+    class DeadWS:
+        closed = False
+
+        async def send_str(self, data: str) -> None:
+            raise ConnectionResetError("Cannot write to closing transport")
+
+    hub._ws = DeadWS()
+    hub._connected.set()
+
+    async def run():
+        await hub.async_send_command(DEVICE_ID, const.FN_POWER, 1)
+
+    with pytest.raises(api.BeurerConnectionError):
+        asyncio.run(run())
+
+
 def test_a_closed_session_stops_the_loop():
     """Unloading the entry closes the session; retrying then is pointless."""
     session = _FakeSession()
