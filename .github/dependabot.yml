@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # The integration itself has no Python dependencies (manifest requirements is
+  # empty), so the actions are the only thing here that goes stale - and CI is
+  # already warning that actions/checkout@v4 targets a deprecated Node runtime.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
