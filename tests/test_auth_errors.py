@@ -6,7 +6,10 @@ one user to reauth. Getting it backwards means telling people to retype a passwo
 that was never wrong.
 """
 
+import asyncio
 import json
+
+import pytest
 
 from tests.loader import load_module
 
@@ -44,3 +47,63 @@ def test_both_are_beurer_errors():
     """Callers that only care about failure can still catch the base class."""
     for body in ('{"error": "invalid_client"}', '{"error": "invalid_grant"}'):
         assert isinstance(api._token_error(400, body), api.BeurerError)
+
+
+class _FakeResponse:
+    """Just enough of an aiohttp response for the token request."""
+
+    def __init__(self, status: int, body: str):
+        self.status = status
+        self._body = body
+
+    async def text(self) -> str:
+        return self._body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakeSession:
+    def __init__(self, response: _FakeResponse):
+        self._response = response
+
+    def post(self, url, data=None):
+        return self._response
+
+
+def _token(status: int, body: str):
+    auth = api.BeurerAuth(_FakeSession(_FakeResponse(status, body)), "e", "p")
+    return asyncio.run(auth.async_token())
+
+
+def test_a_good_token_response_is_stored():
+    assert _token(200, json.dumps({"access_token": "abc", "expires_in": 60})) == "abc"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<html>not json at all</html>",
+        json.dumps({"token_type": "Bearer"}),  # 200, but no access_token
+        json.dumps(["unexpected", "shape"]),
+    ],
+)
+def test_a_malformed_token_response_stays_a_beurer_error(body):
+    """Anything that escapes BeurerError reaches the user as a raw traceback.
+
+    Every caller in the integration catches BeurerError and nothing wider, so a
+    JSONDecodeError or KeyError here would bypass the config flow's error handling
+    and the coordinator's HomeAssistantError translation alike.
+    """
+    with pytest.raises(api.BeurerError):
+        _token(200, body)
+
+
+def test_a_nonsense_expiry_does_not_break_the_login():
+    """A bad expires_in must not cost the caller a token it successfully fetched."""
+    assert (
+        _token(200, json.dumps({"access_token": "abc", "expires_in": "soon"})) == "abc"
+    )

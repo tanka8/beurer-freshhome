@@ -167,10 +167,26 @@ class BeurerAuth:
                 payload = json.loads(body)
         except aiohttp.ClientError as err:
             raise BeurerConnectionError(f"Cannot reach Beurer SSO: {err}") from err
+        except ValueError as err:  # JSONDecodeError is a ValueError
+            # A 200 that is not the token document. Letting a JSONDecodeError escape
+            # would bypass every `except BeurerError` in the integration and surface
+            # as an unhandled traceback rather than a readable message.
+            raise BeurerConnectionError(
+                "Token endpoint returned a response that is not valid JSON"
+            ) from err
 
-        self._access_token = payload["access_token"]
+        try:
+            self._access_token = payload["access_token"]
+        except (KeyError, TypeError) as err:
+            raise BeurerConnectionError(
+                "Token endpoint returned no access_token"
+            ) from err
         self._refresh_token = payload.get("refresh_token", self._refresh_token)
-        self._expires_at = time.time() + float(payload.get("expires_in", 3600))
+        try:
+            expires_in = float(payload.get("expires_in", 3600))
+        except (TypeError, ValueError):
+            expires_in = 3600.0
+        self._expires_at = time.time() + expires_in
 
 
 class BeurerClient:
@@ -264,6 +280,9 @@ class BeurerHub:
         # Set by the config entry so a credential failure at runtime can start a
         # reauth flow instead of retrying against a password that will never work.
         self.on_auth_error: Callable[[], None] | None = None
+        # Set by the config entry so a client_secret rotation at runtime reloads the
+        # entry, where setup reports it with the message that names the fix.
+        self.on_client_secret_error: Callable[[], None] | None = None
 
     @property
     def connected(self) -> bool:
@@ -328,8 +347,20 @@ class BeurerHub:
             "target": "SendCommand",
             "arguments": [device_id, inner],
         }
-        assert self._ws is not None
-        await self._ws.send_str(json.dumps(frame) + RECORD_SEPARATOR)
+        ws = self._ws
+        if ws is None or ws.closed:
+            raise BeurerConnectionError("Not connected to the Beurer hub")
+
+        try:
+            await ws.send_str(json.dumps(frame) + RECORD_SEPARATOR)
+        except (aiohttp.ClientError, OSError) as err:
+            # The socket can close between the check above and the write. aiohttp
+            # raises ConnectionResetError there, which is not a BeurerError, so it
+            # would bypass the coordinator's translation into HomeAssistantError and
+            # reach the user as a traceback.
+            raise BeurerConnectionError(
+                f"Could not send to the Beurer hub: {err}"
+            ) from err
 
     async def _run(self) -> None:
         backoff = 5
@@ -339,6 +370,17 @@ class BeurerHub:
                 backoff = 5
             except asyncio.CancelledError:
                 raise
+            except BeurerClientSecretError as err:
+                # Beurer rotated the app secret. Retrying cannot fix that, and it is
+                # not the user's password, so reauth is the wrong prompt. Reloading
+                # the entry puts the failure through setup, which reports it with the
+                # message that points at the override. Without this the hub would
+                # retry silently forever and the user would only ever see repeated
+                # "connection lost" lines in the log.
+                _LOGGER.error("Beurer app client secret rejected: %s", err)
+                if self.on_client_secret_error:
+                    self.on_client_secret_error()
+                return
             except BeurerAuthError as err:
                 # Credentials no longer work. Retrying cannot fix that, so hand it to
                 # Home Assistant, which prompts the user to re-authenticate, and stop.

@@ -14,7 +14,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import (
     BeurerAuth,
@@ -42,7 +42,11 @@ REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
 
 async def _validate(hass, email: str, password: str, client_secret: str) -> str | None:
     """Return an error key, or None if the credentials work."""
-    session = async_create_clientsession(hass)
+    # Home Assistant's shared session, not a new one per attempt: sessions created
+    # here are only closed when Home Assistant stops, so a handful of mistyped
+    # passwords would leave a handful of sessions behind. The dedicated session in
+    # __init__ exists for the hub's affinity cookie, which none of this needs.
+    session = async_get_clientsession(hass)
     client = BeurerClient(session, BeurerAuth(session, email, password, client_secret))
     try:
         devices = await client.async_list_devices(email)
