@@ -171,9 +171,6 @@ prompts for credentials and is read-only - it never sends a command.
 * Not listed in `home-assistant/brands`. It does not need to be: the icons ship in
   `custom_components/beurer_freshhome/brand/`, which Home Assistant 2026.3 and newer
   prefer over the brands CDN anyway.
-* The HACS job in CI is informational while the repository is private - the action
-  reads `manifest.json` and `hacs.json` through the GitHub API, which returns nothing
-  for a private repository. Make it blocking once the repository is public.
 
 ## How this was built, and what to expect from it
 

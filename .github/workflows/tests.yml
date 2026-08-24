@@ -48,16 +48,6 @@ jobs:
 
   hacs:
     runs-on: ubuntu-latest
-    # Informational until the repository is public. The action reads the files
-    # through the GitHub API rather than from the checkout, and on a private
-    # repository that read comes back empty: integration_manifest fails with
-    # "expected a dictionary. Got None" and hacsjson calls a valid file invalid.
-    # Every check that needs only repository metadata - brands, topics,
-    # description, license, archived, issues, information - already passes, so
-    # drop this line once the repository is public and the last two should pass
-    # too. The brands check is satisfied by the icons in brand/, so nothing here
-    # is waiting on an upstream pull request.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: hacs/action@main
