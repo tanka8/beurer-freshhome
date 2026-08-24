@@ -50,6 +50,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: hacs/action@main
+      # Pinned to a commit rather than a tag on purpose. This check is blocking, so
+      # an unpinned @main lets an upstream change fail our builds - but hacs/action
+      # has not cut a tag since 22.5.0 in May 2022, and pinning to that would run
+      # validation rules four years out of date. The commit is main as of
+      # 2026-06-08; Dependabot bumps it like any other action.
+      - uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa
         with:
           category: integration
