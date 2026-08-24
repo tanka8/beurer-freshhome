@@ -261,6 +261,9 @@ class BeurerHub:
         # simply switched off should not fill the log at increasing intervals.
         self._reported_disconnect = False
         self._connection_listeners: list[Callable[[], None]] = []
+        # Set by the config entry so a credential failure at runtime can start a
+        # reauth flow instead of retrying against a password that will never work.
+        self.on_auth_error: Callable[[], None] | None = None
 
     @property
     def connected(self) -> bool:
@@ -336,6 +339,13 @@ class BeurerHub:
                 backoff = 5
             except asyncio.CancelledError:
                 raise
+            except BeurerAuthError as err:
+                # Credentials no longer work. Retrying cannot fix that, so hand it to
+                # Home Assistant, which prompts the user to re-authenticate, and stop.
+                _LOGGER.warning("Beurer credentials rejected: %s", err)
+                if self.on_auth_error:
+                    self.on_auth_error()
+                return
             except Exception as err:
                 # A closed session means the config entry is going away; retrying
                 # would spin forever against something that can never recover.

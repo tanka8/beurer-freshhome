@@ -94,6 +94,10 @@ MODES = [MODE_AUTO, MODE_MANUAL]
 # generous enough to ride out a brief reconnect.
 STALE_AFTER = 120
 
+# How often to re-evaluate availability. Availability depends on elapsed time, and
+# nothing else would prompt a re-render if the pushes simply stopped.
+AVAILABILITY_POLL = 30
+
 # How long setup waits for the first status frame before assuming the default
 # entity set. Long enough for a slow cloud, short enough not to stall startup.
 FIRST_STATUS_TIMEOUT = 20

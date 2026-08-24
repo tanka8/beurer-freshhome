@@ -5,13 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import timedelta
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .api import BeurerClient, BeurerError, BeurerHub
-from .const import DOMAIN, FIRST_STATUS_TIMEOUT, STALE_AFTER
+from .const import AVAILABILITY_POLL, DOMAIN, FIRST_STATUS_TIMEOUT, STALE_AFTER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,9 +45,22 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
         self._unregister = hub.register(self.device_id, self._handle_status)
         hub.register_connection_listener(self._handle_connection_change)
 
+        # `available` compares a timestamp against now, but nothing re-renders an
+        # entity just because time passed. Without this tick, a cloud that holds the
+        # socket open while the device stops reporting would leave every entity
+        # looking fine and showing a frozen reading indefinitely.
+        self._cancel_tick = async_track_time_interval(
+            hass, self._recheck_availability, timedelta(seconds=AVAILABILITY_POLL)
+        )
+
     async def async_shutdown(self) -> None:
         self._unregister()
+        self._cancel_tick()
         await super().async_shutdown()
+
+    @callback
+    def _recheck_availability(self, _now) -> None:
+        self.async_update_listeners()
 
     async def async_refresh_border_values(self) -> None:
         """Re-read the comfort ranges and auto sensitivity."""

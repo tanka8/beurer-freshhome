@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 
@@ -77,6 +78,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
 
     # One hub per ACCOUNT. It receives every device's frames and dispatches them.
     hub = BeurerHub(session, auth)
+    # A credential failure once running must reach the user, not just the log.
+    hub.on_auth_error = lambda: entry.async_start_reauth(hass)
     coordinators = [BeurerCoordinator(hass, hub, client, device) for device in devices]
     entry.runtime_data = BeurerRuntimeData(hub=hub, coordinators=coordinators)
 
@@ -85,10 +88,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
 
     await hub.async_start()
 
-    # Give the device a moment to report itself, so the platforms can create only
-    # the entities this model actually supports.
-    for coordinator in coordinators:
-        await coordinator.async_wait_first_status()
+    # Give the devices a moment to report themselves, so the platforms can create
+    # only the entities each model actually supports. Concurrently - waiting in turn
+    # would multiply the timeout by the number of devices on the account.
+    await asyncio.gather(*(c.async_wait_first_status() for c in coordinators))
 
     # Changing the client_secret override must rebuild the connection.
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))

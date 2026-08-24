@@ -157,3 +157,48 @@ def test_malformed_frames_are_ignored(hub):
 
     asyncio.run(run())
     assert not seen
+
+
+class _FakeSession:
+    closed = False
+
+
+def test_auth_failure_stops_retrying_and_asks_for_reauth():
+    """Bad credentials cannot be fixed by retrying.
+
+    The hub must hand the failure up so Home Assistant can prompt the user, and
+    must stop. Regressing this would leave it looping forever against a password
+    that will never work, so the wait_for guards against a hang rather than
+    letting the suite stall.
+    """
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+    asked = []
+    hub.on_auth_error = lambda: asked.append(True)
+
+    async def always_rejected():
+        raise api.BeurerAuthError("credentials rejected")
+
+    hub._connect_and_pump = always_rejected
+
+    async def run():
+        await asyncio.wait_for(hub._run(), timeout=2)
+
+    asyncio.run(run())
+    assert asked == [True], "reauth was not requested"
+
+
+def test_a_closed_session_stops_the_loop():
+    """Unloading the entry closes the session; retrying then is pointless."""
+    session = _FakeSession()
+    session.closed = True
+    hub = api.BeurerHub(session=session, auth=None)
+
+    async def boom():
+        raise api.BeurerConnectionError("gone")
+
+    hub._connect_and_pump = boom
+
+    async def run():
+        await asyncio.wait_for(hub._run(), timeout=2)
+
+    asyncio.run(run())
