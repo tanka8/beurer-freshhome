@@ -55,6 +55,9 @@ back on.
 
 ## Install
 
+Requires **Home Assistant 2024.11 or newer** — the reauth flow uses helpers added in
+that release.
+
 **HACS** - three dots menu, Custom repositories, add
 `https://github.com/tanka8/beurer-freshhome` as an *Integration*, then install and
 restart.
