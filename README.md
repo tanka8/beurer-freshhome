@@ -56,7 +56,9 @@ back on.
 ## Install
 
 Requires **Home Assistant 2024.11 or newer** — the reauth flow uses helpers added in
-that release.
+that release. The integration's own icon needs 2026.3 or newer, which is when custom
+integrations gained the ability to ship brand images; on anything older Home
+Assistant simply shows its default icon.
 
 **HACS** - three dots menu, Custom repositories, add
 `https://github.com/tanka8/beurer-freshhome` as an *Integration*, then install and
@@ -166,9 +168,9 @@ prompts for credentials and is read-only - it never sends a command.
 * Error messages are hardcoded English rather than translation keys.
 * The client secret override uses an options flow; current Home Assistant guidance
   leans toward a reconfigure flow.
-* Not listed in `home-assistant/brands`, so the HACS brands check cannot pass. The
-  HACS job in CI is informational for that reason - make it blocking once the
-  repository is public and brands are submitted.
+* Not listed in `home-assistant/brands`. It does not need to be: the icons ship in
+  `custom_components/beurer_freshhome/brand/`, which Home Assistant 2026.3 and newer
+  prefer over the brands CDN anyway.
 
 ## How this was built, and what to expect from it
 

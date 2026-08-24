@@ -13,7 +13,6 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     PERCENTAGE,
-    UnitOfDensity,
     UnitOfTemperature,
     UnitOfTime,
 )
@@ -23,6 +22,20 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BeurerConfigEntry
 from .const import AIR_QUALITY_LABELS
 from .entity import BeurerEntity
+
+try:  # Home Assistant 2026.7 and newer
+    from homeassistant.const import UnitOfDensity
+
+    MICROGRAMS_PER_CUBIC_METER = UnitOfDensity.MICROGRAMS_PER_CUBIC_METER
+except ImportError:  # Home Assistant older than 2026.7
+    # UnitOfDensity did not exist before 2026.7. Importing it unconditionally would
+    # have made the integration unloadable on every core older than that, which is
+    # most of the range this integration claims to support. The older spelling is
+    # only touched on the versions where it is not deprecated, so no deprecation
+    # warning is produced on a current core.
+    from homeassistant.const import (
+        CONCENTRATION_MICROGRAMS_PER_CUBIC_METER as MICROGRAMS_PER_CUBIC_METER,
+    )
 
 # Commands all travel over the one shared WebSocket and are cheap, so there is no
 # reason to serialise them. Nothing here polls.
@@ -79,7 +92,7 @@ SENSORS: tuple[BeurerSensorDescription, ...] = (
         requires="pm",
         device_class=SensorDeviceClass.PM25,
         state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfDensity.MICROGRAMS_PER_CUBIC_METER,
+        native_unit_of_measurement=MICROGRAMS_PER_CUBIC_METER,
         suggested_display_precision=1,
         value_fn=_pm25,
     ),

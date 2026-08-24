@@ -19,6 +19,18 @@ REDACT_CONFIG = {CONF_EMAIL, CONF_PASSWORD}
 # deviceId embeds the device's MAC address.
 REDACT_DEVICE = {"id", "deviceId"}
 
+# The device record comes from /api/users/list, and its full field set is not known
+# - only an LR-500 on one account has ever been seen. Since these downloads are
+# meant to be pasted into public issues, the record is filtered to the fields that
+# are actually useful for adding model support, rather than redacting the two
+# identifying fields that happen to be known and hoping there are no others.
+DEVICE_KEYS = ("model", "name", "type", "deviceType", "firmwareVersion", "swVersion")
+
+
+def _device_summary(device: dict) -> dict:
+    """Only the fields needed to add support for a model."""
+    return {key: device[key] for key in DEVICE_KEYS if key in device}
+
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: BeurerConfigEntry
@@ -31,7 +43,7 @@ async def async_get_config_entry_diagnostics(
             {
                 "model": coordinator.model,
                 "available": coordinator.available,
-                "device": async_redact_data(coordinator.device, REDACT_DEVICE),
+                "device": _device_summary(coordinator.device),
                 # The raw frame, verbatim apart from the id - this is the bit worth
                 # pasting into an issue for an unsupported model.
                 "status": async_redact_data(coordinator.data or {}, REDACT_DEVICE),
