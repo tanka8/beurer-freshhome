@@ -89,10 +89,20 @@ MODE_AUTO = "auto"
 MODE_MANUAL = "manual"
 MODES = [MODE_AUTO, MODE_MANUAL]
 
-# Seconds without a status push before the device is treated as unavailable. The
-# server pushes roughly every 5s (it advertises updateInterval=5), so this is
-# generous enough to ride out a brief reconnect.
-STALE_AFTER = 120
+# Seconds without a status push before the device is treated as unavailable.
+#
+# The server advertises updateInterval=5 and normally pushes at about that rate,
+# but it also drops into a slow periodic mode - observed pushing every 293s, to
+# the second, for hours, with the socket healthy and each frame carrying a fresh
+# reading. Any window shorter than that beat makes every entity flap once per
+# cycle: available on the frame, unavailable ~2 minutes later, back on the next
+# frame. So this has to clear the slow mode, plus a missed beat, rather than the
+# fast one.
+#
+# The cost is the other direction: a device that genuinely dies while the cloud
+# holds the socket open is reported gone this late. That trade is deliberate -
+# a late "unavailable" is better than one that cries wolf every five minutes.
+STALE_AFTER = 480
 
 # How often to re-evaluate availability. Availability depends on elapsed time, and
 # nothing else would prompt a re-render if the pushes simply stopped.
@@ -102,5 +112,12 @@ AVAILABILITY_POLL = 30
 # entity set. Long enough for a slow cloud, short enough not to stall startup.
 FIRST_STATUS_TIMEOUT = 20
 
-# Ceiling on the hub's reconnect backoff.
+# Ceiling on the hub's reconnect backoff, and where that backoff starts.
 MAX_BACKOFF = 300
+INITIAL_BACKOFF = 5
+
+# How long a socket has to survive before the attempt counts as a working
+# connection rather than a failed one. Without this, a server that accepts the
+# handshake and immediately closes would be retried in a hot loop, because every
+# attempt would look successful enough to reset the backoff.
+STABLE_CONNECTION = 60

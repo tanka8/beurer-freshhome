@@ -263,3 +263,95 @@ def test_a_closed_session_stops_the_loop():
         await asyncio.wait_for(hub._run(), timeout=2)
 
     asyncio.run(run())
+
+
+def _capture_reconnect_delays(hub, monkeypatch, rounds):
+    """Run the hub loop for a few reconnects and record what it waited.
+
+    The backoff is a local in _run, so the only way to observe it is the delay
+    handed to asyncio.sleep. The loop is stopped by closing the session, which
+    _run already treats as "the entry is going away".
+    """
+    delays = []
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(seconds, *args, **kwargs):
+        delays.append(seconds)
+        if len(delays) >= rounds:
+            hub._session.closed = True
+        await real_sleep(0)
+
+    monkeypatch.setattr(api.asyncio, "sleep", fake_sleep)
+    asyncio.run(hub._run())
+    return delays
+
+
+def test_backoff_resets_after_a_socket_that_held(monkeypatch):
+    """A connection that worked must not push the next retry further out.
+
+    _connect_and_pump always ends in `raise BeurerConnectionError`, so the reset
+    that used to sit after the await was unreachable and the delay doubled on
+    every drop until it stuck at MAX_BACKOFF. A device that dropped a handful of
+    times was then reconnected only once every five minutes, on a healthy
+    network, until the entry was reloaded.
+    """
+    import time
+
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+
+    async def connects_then_drops():
+        hub._connected.set()
+        # Long enough to count as an established connection.
+        hub._connected_at = time.monotonic() - (const.STABLE_CONNECTION + 1)
+        raise api.BeurerConnectionError("socket closed")
+
+    hub._connect_and_pump = connects_then_drops
+    delays = _capture_reconnect_delays(hub, monkeypatch, rounds=5)
+
+    assert delays == [const.INITIAL_BACKOFF] * len(delays), (
+        f"a working socket should reset the backoff, got {delays}"
+    )
+
+
+def test_backoff_still_escalates_when_the_socket_never_holds(monkeypatch):
+    """The reset must not defeat the backoff for a genuinely broken endpoint.
+
+    A server that refuses outright, or accepts the handshake and drops it
+    immediately, has to be retried more and more slowly - otherwise the fix
+    above turns into a hot reconnect loop.
+    """
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+
+    async def never_connects():
+        raise api.BeurerConnectionError("refused")
+
+    hub._connect_and_pump = never_connects
+    delays = _capture_reconnect_delays(hub, monkeypatch, rounds=5)
+
+    assert delays == sorted(delays), f"backoff should not shrink, got {delays}"
+    assert delays[-1] > delays[0], f"backoff should escalate, got {delays}"
+    assert max(delays) <= const.MAX_BACKOFF, f"backoff exceeded the cap: {delays}"
+
+
+def test_a_socket_that_dies_instantly_does_not_reset_the_backoff(monkeypatch):
+    """Accepting the handshake is not the same as working.
+
+    This is the case the STABLE_CONNECTION threshold exists for: without it,
+    "was connected at all" would reset the backoff and a server that closes
+    every socket on sight would be hammered every INITIAL_BACKOFF seconds.
+    """
+    import time
+
+    hub = api.BeurerHub(session=_FakeSession(), auth=None)
+
+    async def connects_then_dies_at_once():
+        hub._connected.set()
+        hub._connected_at = time.monotonic()
+        raise api.BeurerConnectionError("closed immediately")
+
+    hub._connect_and_pump = connects_then_dies_at_once
+    delays = _capture_reconnect_delays(hub, monkeypatch, rounds=4)
+
+    assert delays[-1] > delays[0], (
+        f"a socket that never held should escalate, got {delays}"
+    )

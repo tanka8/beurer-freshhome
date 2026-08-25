@@ -37,11 +37,13 @@ from .const import (
     DEVICES_URL,
     HUB_NEGOTIATE_URL,
     HUB_URL,
+    INITIAL_BACKOFF,
     MAX_BACKOFF,
     MSG_INVOCATION,
     MSG_PING,
     RECORD_SEPARATOR,
     SCOPE,
+    STABLE_CONNECTION,
     TOKEN_URL,
 )
 
@@ -272,6 +274,10 @@ class BeurerHub:
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._task: asyncio.Task | None = None
         self._connected = asyncio.Event()
+        # When the current socket came up, so a drop can be told apart from an
+        # attempt that never connected. Monotonic: this measures elapsed time, and
+        # a clock adjustment must not make a young connection look established.
+        self._connected_at: float | None = None
         self._listeners: dict[str, list[StatusCallback]] = {}
         # Log a dropped connection once rather than on every retry; a device that is
         # simply switched off should not fill the log at increasing intervals.
@@ -287,6 +293,12 @@ class BeurerHub:
     @property
     def connected(self) -> bool:
         return self._ws is not None and not self._ws.closed
+
+    def _held_connection(self, seconds: float) -> bool:
+        """Whether the attempt that just ended kept a socket up for this long."""
+        if self._connected_at is None:
+            return False
+        return (time.monotonic() - self._connected_at) >= seconds
 
     def register(self, device_id: str, callback: StatusCallback) -> Callable[[], None]:
         """Subscribe to one device's status frames. Returns an unsubscribe callable."""
@@ -363,11 +375,10 @@ class BeurerHub:
             ) from err
 
     async def _run(self) -> None:
-        backoff = 5
+        backoff = INITIAL_BACKOFF
         while True:
             try:
                 await self._connect_and_pump()
-                backoff = 5
             except asyncio.CancelledError:
                 raise
             except BeurerClientSecretError as err:
@@ -394,6 +405,17 @@ class BeurerHub:
                 if self._session.closed:
                     _LOGGER.debug("Beurer hub stopping: session closed")
                     return
+                # A socket that stayed up is evidence the endpoint works, so the
+                # next attempt starts from the bottom of the backoff again; only
+                # attempts that never produced a usable connection escalate.
+                # This is checked here rather than after the loop body because
+                # _connect_and_pump always raises - it ends in an unconditional
+                # `raise BeurerConnectionError`, so a reset placed after the await
+                # is unreachable and every drop doubled the delay until it stuck
+                # at MAX_BACKOFF, leaving a healthy network reconnecting once every
+                # five minutes until the entry was reloaded.
+                if self._held_connection(STABLE_CONNECTION):
+                    backoff = INITIAL_BACKOFF
                 if self._reported_disconnect:
                     _LOGGER.debug(
                         "Beurer hub still unreachable (%s); retrying in %ss",
@@ -408,6 +430,7 @@ class BeurerHub:
             finally:
                 was_connected = self._connected.is_set()
                 self._connected.clear()
+                self._connected_at = None
                 self._ws = None
                 if was_connected:
                     self._notify_connection_change()
@@ -439,6 +462,7 @@ class BeurerHub:
                 json.dumps({"protocol": "json", "version": 1}) + RECORD_SEPARATOR
             )
             self._connected.set()
+            self._connected_at = time.monotonic()
             self._notify_connection_change()
             if self._reported_disconnect:
                 _LOGGER.info("Beurer hub connection restored")
