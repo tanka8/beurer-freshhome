@@ -98,6 +98,34 @@ Auth is an OAuth2 password grant against `https://sso.connect.beurer.com/connect
 The `client_id` and `client_secret` in `const.py` are constants embedded in the app,
 identical for every FreshHome user - they are not account secrets.
 
+### What is stored: a refresh token, not your password
+
+Your password is used to sign in, and then Home Assistant keeps the OAuth **refresh
+token** Beurer returns instead (`refresh_token` in the config entry), so the password
+does not sit in `.storage` or in your backups. Beurer may rotate that token each time
+it is used; every new one is saved straight away.
+
+The password is only dropped once it is safe to:
+
+* the token has been saved, **and** Beurer has accepted it for a real refresh. A token
+  that is issued but then refused would otherwise send you to the reauth prompt every
+  time the access token expires;
+* if Beurer issues no refresh token, or will not honour the one it issues, the entry
+  keeps the password and works exactly as it always has.
+
+**Upgrading** needs nothing from you. The entry is marked as version 1.2 when Home
+Assistant starts, signs in once with the password it still has, saves the token,
+proves it, and then removes the password - all in that first start. If Beurer is
+unreachable at that moment, it simply tries again at the next start.
+
+**If the refresh token stops working** (Beurer revoked it, or Home Assistant was off
+for longer than it lives), Home Assistant shows *Re-authentication required*. Enter
+your password once; a new token is saved and the password is not. A rejected app
+`client_secret` (see below) is told apart and does **not** ask for a password.
+
+The refresh token can sign in to your Beurer account until Beurer revokes it, so
+treat a backup of the config entry as you would treat a saved password.
+
 ### If sign-in suddenly stops working for everyone
 
 That `client_secret` belongs to Beurer, and they can change it whenever they like.
@@ -141,10 +169,13 @@ python -m pytest                 # tests/ - no Home Assistant needed, any platfo
 `tests/` replays real captured SignalR frames through the parser, with no network and
 no credentials. It covers the status decoding, per-device dispatch, that command
 echoes are not mistaken for state, that keepalive pings are answered, the model
-fallbacks, and the classification of rejected token requests.
+fallbacks, the classification of rejected token requests, refresh-token rotation, and
+that a borderValues write never reverts a setting changed since it was last read.
 
-`tests_ha/` runs the config flow through Home Assistant itself using
-`pytest-homeassistant-custom-component`. **That harness does not work on Windows** -
+`tests_ha/` runs the config flow, setup, migration of an old entry, reauth and
+diagnostics through Home Assistant itself using
+`pytest-homeassistant-custom-component`, with Beurer's HTTP endpoints mocked.
+**That harness does not work on Windows** -
 its autouse fixtures need a socketpair that `pytest-socket` blocks - so those run on
 Linux in CI. See `tests_ha/README.md`.
 

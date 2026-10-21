@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Beurer FreshHome",
-        "description": "Sign in with the same account you use in the beurer FreshHome app.",
+        "description": "Sign in with the same account you use in the beurer FreshHome app. Your password is used to sign in; where Beurer allows it, Home Assistant then keeps a sign-in token instead of the password.",
         "data": {
           "email": "Email",
           "password": "Password"
@@ -11,7 +11,7 @@
       },
       "reauth_confirm": {
         "title": "Re-authenticate",
-        "description": "The password for {email} was rejected. Enter it again.",
+        "description": "The saved sign-in for {email} was rejected or has expired. Enter your password to sign in again. Where Beurer allows it, only a sign-in token is saved, not the password.",
         "data": {
           "password": "Password"
         }
@@ -104,7 +104,7 @@
     "step": {
       "init": {
         "title": "Advanced",
-        "description": "Leave blank unless sign-in has started failing with a client secret error. Beurer can change the value the app uses; a replacement can be set here without waiting for a new release.",
+        "description": "Leave blank unless sign-in has started failing with a client secret error. Beurer can change the value the app uses; a replacement can be set here without waiting for a new release. If no password is stored any more, the new value cannot be tested when you save: the integration reloads with it and reports an error on its own page if it is rejected.",
         "data": {
           "client_secret": "App client secret override"
         }

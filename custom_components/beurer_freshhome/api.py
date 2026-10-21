@@ -57,7 +57,7 @@ class BeurerError(Exception):
 
 
 class BeurerAuthError(BeurerError):
-    """The user's email or password was rejected."""
+    """The user's email and password, or the sign-in saved from them, was rejected."""
 
 
 class BeurerClientSecretError(BeurerError):
@@ -100,23 +100,48 @@ def _token_error(status: int, body: str) -> BeurerError:
 
 
 class BeurerAuth:
-    """Holds the OAuth2 tokens and refreshes them before they expire."""
+    """Holds the OAuth2 tokens and refreshes them before they expire.
+
+    Two ways to sign in, tried in this order:
+
+      * the refresh token, which is what a config entry keeps once Beurer has
+        confirmed it works, and
+      * the password, which entries created before refresh tokens were stored still
+        hold until that has been confirmed (see async_confirm_refresh_token).
+
+    Beurer may rotate the refresh token every time it is used, so a new one is handed
+    to `on_refresh_token` the moment it arrives. Whoever stores it has to do so
+    straight away: a rotated token that is only held in memory is lost on restart,
+    and the stored one it replaced may no longer be accepted.
+    """
 
     def __init__(
         self,
         session: aiohttp.ClientSession,
         email: str,
-        password: str,
+        password: str | None = None,
         client_secret: str | None = None,
+        *,
+        refresh_token: str | None = None,
+        on_refresh_token: Callable[[str], None] | None = None,
     ):
         self._session = session
         self._email = email
         self._password = password
         self._client_secret = client_secret or DEFAULT_CLIENT_SECRET
         self._access_token: str | None = None
-        self._refresh_token: str | None = None
+        self._refresh_token: str | None = refresh_token
+        self._on_refresh_token = on_refresh_token
+        # Whether Beurer has accepted a refresh_token grant from this instance. A
+        # refresh token that was merely issued is not evidence that it works.
+        self._refresh_proven = False
         self._expires_at: float = 0.0
         self._lock = asyncio.Lock()
+
+    @property
+    def refresh_token(self) -> str | None:
+        """The current refresh token, if Beurer has issued one."""
+        return self._refresh_token
 
     async def async_token(self) -> str:
         """Return a valid access token, refreshing or re-logging in as needed."""
@@ -127,18 +152,25 @@ class BeurerAuth:
 
             if self._refresh_token:
                 try:
-                    await self._request(
-                        {
-                            "grant_type": "refresh_token",
-                            "refresh_token": self._refresh_token,
-                        }
-                    )
+                    await self._refresh()
                     return self._access_token  # type: ignore[return-value]
-                except BeurerAuthError:
+                except BeurerAuthError as err:
+                    # Only a rejection lands here. A failure to reach Beurer is a
+                    # BeurerConnectionError and leaves the token alone: it is still
+                    # good, and throwing it away would cost the user a reauth for
+                    # an outage.
+                    self._refresh_token = None
+                    if not self._password:
+                        raise BeurerAuthError(
+                            "Beurer rejected the saved sign-in; it has to be "
+                            "entered again"
+                        ) from err
                     _LOGGER.debug(
                         "Refresh token rejected, falling back to a full login"
                     )
-                    self._refresh_token = None
+
+            if not self._password:
+                raise BeurerAuthError("No password or refresh token to sign in with")
 
             await self._request(
                 {
@@ -148,6 +180,41 @@ class BeurerAuth:
                 }
             )
             return self._access_token  # type: ignore[return-value]
+
+    async def async_confirm_refresh_token(self) -> bool:
+        """Spend the refresh token once, to learn that Beurer really accepts it.
+
+        Storing the refresh token in place of the password is only safe if the
+        token works: if Beurer issued one that it then refuses to honour, the user
+        would be sent to reauth every time the access token expires. So the swap is
+        made only after a refresh_token grant has actually succeeded, and the answer
+        is given here without waiting an hour for it to happen on its own.
+
+        Returns False when there is no token or Beurer rejects it, leaving the
+        caller to keep the password. A failure to reach Beurer, or a rejected
+        client_secret, propagates: that is "could not tell", not "no".
+        """
+        async with self._lock:
+            if self._refresh_proven:
+                return True
+            if not self._refresh_token:
+                return False
+            try:
+                await self._refresh()
+            except BeurerAuthError:
+                self._refresh_token = None
+                return False
+            return True
+
+    async def _refresh(self) -> None:
+        """Run a refresh_token grant with the token held. Caller holds the lock."""
+        await self._request(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": self._refresh_token or "",
+            }
+        )
+        self._refresh_proven = True
 
     async def _request(self, extra: dict[str, str]) -> None:
         data = {
@@ -183,12 +250,31 @@ class BeurerAuth:
             raise BeurerConnectionError(
                 "Token endpoint returned no access_token"
             ) from err
-        self._refresh_token = payload.get("refresh_token", self._refresh_token)
         try:
             expires_in = float(payload.get("expires_in", 3600))
         except (TypeError, ValueError):
             expires_in = 3600.0
         self._expires_at = time.time() + expires_in
+
+        # A response without a refresh_token keeps the one already held, and so
+        # does a null or empty one.
+        refresh_token = payload.get("refresh_token")
+        if isinstance(refresh_token, str) and refresh_token:
+            changed = refresh_token != self._refresh_token
+            self._refresh_token = refresh_token
+            if changed:
+                self._notify_refresh_token(refresh_token)
+
+    def _notify_refresh_token(self, refresh_token: str) -> None:
+        if self._on_refresh_token is None:
+            return
+        try:
+            self._on_refresh_token(refresh_token)
+        except Exception:
+            # The sign-in itself worked, so it must not be reported as failed; the
+            # cost of not saving is a reauth after the next restart, not an error
+            # now. Logged without the token.
+            _LOGGER.exception("Could not save the new Beurer refresh token")
 
 
 class BeurerClient:
