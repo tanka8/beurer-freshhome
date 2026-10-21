@@ -53,6 +53,20 @@ Night mode is deliberately left alone when changing speed - it appears to be mai
 the display-off setting, and cancelling it as a side effect would turn your display
 back on.
 
+## Blueprint
+
+[`blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml`](blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml)
+runs the purifier at Turbo when PM2.5 has stayed above a threshold, and - optionally -
+returns it to Auto once the air has been clean for a while. It only undoes what it did:
+if you have picked a speed since, that is left alone.
+
+Import it with **Settings, Automations & scenes, Blueprints, Import Blueprint** and
+this URL (it exists once this is on the `main` branch):
+
+```
+https://github.com/tanka8/beurer-freshhome/blob/main/blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml
+```
+
 ## Install
 
 Requires **Home Assistant 2024.11 or newer** — the reauth flow uses helpers added in
