@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 
@@ -50,6 +51,24 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 StatusCallback = Callable[[dict], None]
+
+# A URL with a query string, in free text. The query is what must not be logged.
+_URL_QUERY = re.compile(r"(https?://[^\s?'\"]+)\?[^\s'\"]*")
+
+
+def _describe(err: BaseException) -> str:
+    """An error's text with any request URL query removed.
+
+    Beurer's API is called with the account email in the URL (?email=) and with the
+    device id, which embeds the device's MAC address (?deviceId=). aiohttp puts the
+    whole URL, query included, in the text of the ClientResponseError that
+    raise_for_status() and a failed WebSocket upgrade produce, and what is built from
+    these errors ends up in Home Assistant's log and on screen. So nothing here
+    interpolates an aiohttp error directly; it goes through this.
+    """
+    if isinstance(err, aiohttp.ClientResponseError):
+        return f"HTTP {err.status} {err.message}".strip()
+    return _URL_QUERY.sub(r"\1", str(err))
 
 
 class BeurerError(Exception):
@@ -235,7 +254,9 @@ class BeurerAuth:
                     )
                 payload = json.loads(body)
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot reach Beurer SSO: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot reach Beurer SSO: {_describe(err)}"
+            ) from err
         except ValueError as err:  # JSONDecodeError is a ValueError
             # A 200 that is not the token document. Letting a JSONDecodeError escape
             # would bypass every `except BeurerError` in the integration and surface
@@ -292,6 +313,11 @@ class BeurerClient:
 
     async def async_list_devices(self, email: str) -> list[dict]:
         """Return the account's devices. Identity only - no live state."""
+        # The email goes in the query string because Beurer's API takes it there; that
+        # is its design, not ours. It means the email is in this request's URL, so
+        # nothing on this path may log or re-raise the URL: errors go through
+        # _describe(), which drops it. (aiohttp's own debug logging is outside our
+        # control, and is the other place the email could surface.)
         try:
             async with self._session.get(
                 DEVICES_URL, params={"email": email}, headers=await self._headers()
@@ -301,7 +327,9 @@ class BeurerClient:
                 resp.raise_for_status()
                 payload = await resp.json()
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot list devices: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot list devices: {_describe(err)}"
+            ) from err
 
         return payload.get("devices", [])
 
@@ -318,7 +346,9 @@ class BeurerClient:
                 resp.raise_for_status()
                 return await resp.json()
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot read borderValues: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot read borderValues: {_describe(err)}"
+            ) from err
 
     async def async_set_border_values(self, device_id: str, **changes) -> None:
         """Change some borderValues fields, leaving the others as they are NOW.
@@ -364,7 +394,7 @@ class BeurerClient:
                     resp.raise_for_status()
             except aiohttp.ClientError as err:
                 raise BeurerConnectionError(
-                    f"Cannot write borderValues: {err}"
+                    f"Cannot write borderValues: {_describe(err)}"
                 ) from err
 
 
@@ -479,7 +509,7 @@ class BeurerHub:
             # would bypass the coordinator's translation into HomeAssistantError and
             # reach the user as a traceback.
             raise BeurerConnectionError(
-                f"Could not send to the Beurer hub: {err}"
+                f"Could not send to the Beurer hub: {_describe(err)}"
             ) from err
 
     async def _run(self) -> None:
@@ -527,12 +557,14 @@ class BeurerHub:
                 if self._reported_disconnect:
                     _LOGGER.debug(
                         "Beurer hub still unreachable (%s); retrying in %ss",
-                        err,
+                        _describe(err),
                         backoff,
                     )
                 else:
                     _LOGGER.warning(
-                        "Beurer hub connection lost (%s); retrying in %ss", err, backoff
+                        "Beurer hub connection lost (%s); retrying in %ss",
+                        _describe(err),
+                        backoff,
                     )
                     self._reported_disconnect = True
             finally:

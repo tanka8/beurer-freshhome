@@ -130,7 +130,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: BeurerConfigEntry) -> bo
         raise ConfigEntryNotReady(str(err)) from err
 
     if not devices:
-        raise ConfigEntryNotReady(f"No devices on the Beurer account {email}")
+        raise ConfigEntryNotReady("No devices on the Beurer account")
 
     await _async_replace_password_with_token(hass, entry, auth)
 

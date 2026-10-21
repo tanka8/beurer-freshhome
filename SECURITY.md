@@ -38,4 +38,7 @@ Diagnostics downloads have the value of every stored credential removed - the em
 password and refresh token, by name and by default for anything else the entry gains -
 and the device identifiers; the device record is filtered to the model and name rather
 than dumped whole. Log lines are not filtered by anyone - check them for access tokens
-before posting.
+before posting. This integration's own log lines and error messages leave out request
+URLs, because Beurer's API carries the account email in one of them; but a device id
+can still appear, and Home Assistant names the config entry (your email) in some of
+its own lines about it.
