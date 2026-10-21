@@ -197,6 +197,9 @@ class BeurerClient:
     def __init__(self, session: aiohttp.ClientSession, auth: BeurerAuth):
         self._session = session
         self._auth = auth
+        # Serialises the read-modify-write of borderValues; see
+        # async_set_border_values.
+        self._border_values_lock = asyncio.Lock()
 
     async def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {await self._auth.async_token()}"}
@@ -231,33 +234,52 @@ class BeurerClient:
         except aiohttp.ClientError as err:
             raise BeurerConnectionError(f"Cannot read borderValues: {err}") from err
 
-    async def async_set_border_values(self, current: dict, **changes) -> None:
-        """Write borderValues.
+    async def async_set_border_values(self, device_id: str, **changes) -> None:
+        """Change some borderValues fields, leaving the others as they are NOW.
 
         The endpoint replaces the whole record rather than patching it, so every
-        field has to be sent back or it is lost. `current` is the last read, which
-        the changes are merged into.
-        """
-        body = {
-            "deviceId": current["deviceId"],
-            "deviceLocation": current.get("deviceLocation", "manual"),
-            "devicePmSensitivity": current.get("devicePmSensitivity", "standard"),
-            "humidMin": current.get("humidMin"),
-            "humidMax": current.get("humidMax"),
-            "tempMin": current.get("tempMin"),
-            "tempMax": current.get("tempMax"),
-        }
-        body.update(changes)
+        field has to be sent back or it is lost. The record is therefore read again
+        here, immediately before the write, and the changes are merged into that.
 
-        try:
-            async with self._session.post(
-                BORDER_VALUES_URL, json=body, headers=await self._headers()
-            ) as resp:
-                if resp.status == 401:
-                    raise BeurerAuthError("Token rejected writing borderValues")
-                resp.raise_for_status()
-        except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot write borderValues: {err}") from err
+        Merging into an earlier read - the coordinator's, say, which is only as
+        fresh as the last time something asked - would silently put back the old
+        value of every field that changed in the meantime, for instance a comfort
+        range edited in the Beurer app. Costing one extra GET per write is the
+        price of not reverting somebody's setting.
+        """
+        # Without this, two writes could both read the record before either wrote
+        # it, and the second would revert the first.
+        async with self._border_values_lock:
+            current = await self.async_get_border_values(device_id)
+            if not isinstance(current, dict) or not current:
+                # A write built from nothing would blank every other field.
+                raise BeurerConnectionError(
+                    "borderValues came back empty; refusing to overwrite settings "
+                    "that could not be read"
+                )
+
+            body = {
+                "deviceId": current.get("deviceId") or device_id,
+                "deviceLocation": current.get("deviceLocation", "manual"),
+                "devicePmSensitivity": current.get("devicePmSensitivity", "standard"),
+                "humidMin": current.get("humidMin"),
+                "humidMax": current.get("humidMax"),
+                "tempMin": current.get("tempMin"),
+                "tempMax": current.get("tempMax"),
+            }
+            body.update(changes)
+
+            try:
+                async with self._session.post(
+                    BORDER_VALUES_URL, json=body, headers=await self._headers()
+                ) as resp:
+                    if resp.status == 401:
+                        raise BeurerAuthError("Token rejected writing borderValues")
+                    resp.raise_for_status()
+            except aiohttp.ClientError as err:
+                raise BeurerConnectionError(
+                    f"Cannot write borderValues: {err}"
+                ) from err
 
 
 class BeurerHub:

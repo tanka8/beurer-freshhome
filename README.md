@@ -86,7 +86,9 @@ Two channels, which is the part that is easy to get wrong:
 
 * **REST** - `/api/users/list` returns the account's devices, identity only, **no live
   state**. `/api/devices/borderValues` holds the comfort ranges and the auto
-  sensitivity, and is a full replace on write, not a patch.
+  sensitivity, and is a full replace on write, not a patch - so every write reads
+  the record again first and merges its change into that, rather than into an older
+  read that might predate an edit made in the Beurer app.
 * **SignalR** - `POST /messageHub/negotiate`, then a WebSocket to `/messageHub?id=...`.
   This carries both the live status pushes and the control commands. Frames are
   `0x1e`-delimited JSON; the client invokes `SendCommand`, the server pushes
