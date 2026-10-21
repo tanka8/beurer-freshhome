@@ -70,7 +70,17 @@ restart.
 Then **Settings, Devices & services, Add integration, Beurer FreshHome**, and sign in
 with your FreshHome account.
 
-## Other models
+## Supported models
+
+Models reported working. "Working" means somebody ran the integration on that model
+and confirmed that the entities above show the right values and the controls do what
+the app does. A model that is not listed is not known to fail - it is just unreported.
+
+| Model | Reported working | Fan speeds | Confirmed in |
+|---|---|---|---|
+| LR-500 (`LR500`) | Yes: every entity and control above | 1-5, where 5 is Turbo | The maintainer's own unit, which the integration was built against (no issue) |
+
+### Other models
 
 If your device is not an LR-500, please open an
 [unsupported model issue](https://github.com/tanka8/beurer-freshhome/issues/new?template=unsupported_model.yml)
@@ -79,6 +89,18 @@ and your email redacted, which is exactly what is needed to add support.
 
 Fan speed ranges are per model in `const.py`; unknown models fall back to 1-5, which
 may be wrong for yours.
+
+### Adding a model to the table
+
+Use the same issue template, whether the model works out of the box or needed a change:
+
+1. Fill in the *Model* field and attach the diagnostics download (Settings, Devices &
+   services, Beurer FreshHome, the three dots, *Download diagnostics*).
+2. Under *Result*, pick *Everything matches the app* if it does; in the last box, say
+   which entities and controls you checked against the app.
+3. Once the issue shows the model working (as shipped, or after a fix), a row is added
+   with the model, the fan speeds it reports, and a link to that issue. A pull request
+   that adds the row and links the issue is just as welcome.
 
 ## How it works
 
