@@ -10,6 +10,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
+from homeassistant.components.automation.config import AUTOMATION_BLUEPRINT_SCHEMA
 from homeassistant.components.blueprint import models
 from homeassistant.helpers.config_validation import ensure_list
 from homeassistant.setup import async_setup_component
@@ -34,7 +35,9 @@ FAN = "fan.purifier"
 
 def test_the_blueprint_is_valid():
     blueprint = models.Blueprint(
-        load_yaml_dict(BLUEPRINT), expected_domain="automation"
+        load_yaml_dict(BLUEPRINT),
+        expected_domain="automation",
+        schema=AUTOMATION_BLUEPRINT_SCHEMA,
     )
     assert set(blueprint.inputs) == {
         "pm25_sensor",
