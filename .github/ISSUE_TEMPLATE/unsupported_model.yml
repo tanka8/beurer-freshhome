@@ -1,5 +1,5 @@
 name: Unsupported or misbehaving model
-description: Your Beurer device is not an LR-500, or some entities are wrong
+description: Your Beurer device is not an LR-500, some entities are wrong, or you want to confirm a model works
 labels: ["model-support"]
 body:
   - type: markdown
@@ -31,10 +31,25 @@ body:
       render: json
     validations:
       required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: Result
+      description: >
+        A model that works as it is can be added to the "Supported models" table in
+        the README - say so here and it will be.
+      options:
+        - Everything matches the app
+        - Some entities or controls are wrong or missing
+        - Nothing works
+    validations:
+      required: true
   - type: textarea
     id: problem
     attributes:
-      label: What is wrong
-      description: Which entity, what it shows, and what the app shows instead.
+      label: What you checked, or what is wrong
+      description: >
+        Which entities and controls you compared with the app. For anything wrong:
+        which entity, what it shows, and what the app shows instead.
     validations:
       required: true

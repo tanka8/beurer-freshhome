@@ -75,6 +75,17 @@ PM_SENSITIVITIES = ["sensitive", "standard", "moderate"]
 # Optional per-entry override for DEFAULT_CLIENT_SECRET.
 CONF_CLIENT_SECRET = "client_secret"
 
+# What a config entry keeps in place of the password once Beurer has confirmed that
+# the refresh token works. Entries created before this existed still hold the
+# password, and keep working: see async_setup_entry.
+CONF_REFRESH_TOKEN = "refresh_token"
+
+# Config entry version. The major version stays at 1: raising it would make an older
+# release refuse the entry outright, while a minor bump is ignored by one that has
+# no migration. Minor 2 is "may store a refresh token instead of the password".
+CONFIG_ENTRY_VERSION = 1
+CONFIG_ENTRY_MINOR_VERSION = 2
+
 
 def client_secret_from_options(options) -> str:
     """The secret an entry should use.

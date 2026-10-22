@@ -117,17 +117,17 @@ class BeurerCoordinator(DataUpdateCoordinator[dict]):
             ) from err
 
     async def async_set_sensitivity(self, value: str) -> None:
-        """Change the auto-mode particle sensitivity, then re-read it."""
-        if not self.border_values:
-            await self.async_refresh_border_values()
-        if not self.border_values:
-            raise HomeAssistantError(
-                "Beurer: current settings unknown, refusing to overwrite them"
-            )
+        """Change the auto-mode particle sensitivity, then re-read it.
 
+        The client merges the change into a read taken just before the write, not
+        into self.border_values: that is only as fresh as the last refresh, and the
+        endpoint replaces the whole record, so merging into it would revert anything
+        changed in the Beurer app since. The client also refuses to write when it
+        cannot read the current settings, so no guard is needed here.
+        """
         try:
             await self.client.async_set_border_values(
-                self.border_values, devicePmSensitivity=value
+                self.device_id, devicePmSensitivity=value
             )
         except BeurerError as err:
             raise HomeAssistantError(f"Could not change sensitivity: {err}") from err

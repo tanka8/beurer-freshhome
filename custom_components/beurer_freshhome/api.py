@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 
@@ -51,13 +52,31 @@ _LOGGER = logging.getLogger(__name__)
 
 StatusCallback = Callable[[dict], None]
 
+# A URL with a query string, in free text. The query is what must not be logged.
+_URL_QUERY = re.compile(r"(https?://[^\s?'\"]+)\?[^\s'\"]*")
+
+
+def _describe(err: BaseException) -> str:
+    """An error's text with any request URL query removed.
+
+    Beurer's API is called with the account email in the URL (?email=) and with the
+    device id, which embeds the device's MAC address (?deviceId=). aiohttp puts the
+    whole URL, query included, in the text of the ClientResponseError that
+    raise_for_status() and a failed WebSocket upgrade produce, and what is built from
+    these errors ends up in Home Assistant's log and on screen. So nothing here
+    interpolates an aiohttp error directly; it goes through this.
+    """
+    if isinstance(err, aiohttp.ClientResponseError):
+        return f"HTTP {err.status} {err.message}".strip()
+    return _URL_QUERY.sub(r"\1", str(err))
+
 
 class BeurerError(Exception):
     """Base class for this integration's errors."""
 
 
 class BeurerAuthError(BeurerError):
-    """The user's email or password was rejected."""
+    """The user's email and password, or the sign-in saved from them, was rejected."""
 
 
 class BeurerClientSecretError(BeurerError):
@@ -100,23 +119,48 @@ def _token_error(status: int, body: str) -> BeurerError:
 
 
 class BeurerAuth:
-    """Holds the OAuth2 tokens and refreshes them before they expire."""
+    """Holds the OAuth2 tokens and refreshes them before they expire.
+
+    Two ways to sign in, tried in this order:
+
+      * the refresh token, which is what a config entry keeps once Beurer has
+        confirmed it works, and
+      * the password, which entries created before refresh tokens were stored still
+        hold until that has been confirmed (see async_confirm_refresh_token).
+
+    Beurer may rotate the refresh token every time it is used, so a new one is handed
+    to `on_refresh_token` the moment it arrives. Whoever stores it has to do so
+    straight away: a rotated token that is only held in memory is lost on restart,
+    and the stored one it replaced may no longer be accepted.
+    """
 
     def __init__(
         self,
         session: aiohttp.ClientSession,
         email: str,
-        password: str,
+        password: str | None = None,
         client_secret: str | None = None,
+        *,
+        refresh_token: str | None = None,
+        on_refresh_token: Callable[[str], None] | None = None,
     ):
         self._session = session
         self._email = email
         self._password = password
         self._client_secret = client_secret or DEFAULT_CLIENT_SECRET
         self._access_token: str | None = None
-        self._refresh_token: str | None = None
+        self._refresh_token: str | None = refresh_token
+        self._on_refresh_token = on_refresh_token
+        # Whether Beurer has accepted a refresh_token grant from this instance. A
+        # refresh token that was merely issued is not evidence that it works.
+        self._refresh_proven = False
         self._expires_at: float = 0.0
         self._lock = asyncio.Lock()
+
+    @property
+    def refresh_token(self) -> str | None:
+        """The current refresh token, if Beurer has issued one."""
+        return self._refresh_token
 
     async def async_token(self) -> str:
         """Return a valid access token, refreshing or re-logging in as needed."""
@@ -127,18 +171,25 @@ class BeurerAuth:
 
             if self._refresh_token:
                 try:
-                    await self._request(
-                        {
-                            "grant_type": "refresh_token",
-                            "refresh_token": self._refresh_token,
-                        }
-                    )
+                    await self._refresh()
                     return self._access_token  # type: ignore[return-value]
-                except BeurerAuthError:
+                except BeurerAuthError as err:
+                    # Only a rejection lands here. A failure to reach Beurer is a
+                    # BeurerConnectionError and leaves the token alone: it is still
+                    # good, and throwing it away would cost the user a reauth for
+                    # an outage.
+                    self._refresh_token = None
+                    if not self._password:
+                        raise BeurerAuthError(
+                            "Beurer rejected the saved sign-in; it has to be "
+                            "entered again"
+                        ) from err
                     _LOGGER.debug(
                         "Refresh token rejected, falling back to a full login"
                     )
-                    self._refresh_token = None
+
+            if not self._password:
+                raise BeurerAuthError("No password or refresh token to sign in with")
 
             await self._request(
                 {
@@ -148,6 +199,41 @@ class BeurerAuth:
                 }
             )
             return self._access_token  # type: ignore[return-value]
+
+    async def async_confirm_refresh_token(self) -> bool:
+        """Spend the refresh token once, to learn that Beurer really accepts it.
+
+        Storing the refresh token in place of the password is only safe if the
+        token works: if Beurer issued one that it then refuses to honour, the user
+        would be sent to reauth every time the access token expires. So the swap is
+        made only after a refresh_token grant has actually succeeded, and the answer
+        is given here without waiting an hour for it to happen on its own.
+
+        Returns False when there is no token or Beurer rejects it, leaving the
+        caller to keep the password. A failure to reach Beurer, or a rejected
+        client_secret, propagates: that is "could not tell", not "no".
+        """
+        async with self._lock:
+            if self._refresh_proven:
+                return True
+            if not self._refresh_token:
+                return False
+            try:
+                await self._refresh()
+            except BeurerAuthError:
+                self._refresh_token = None
+                return False
+            return True
+
+    async def _refresh(self) -> None:
+        """Run a refresh_token grant with the token held. Caller holds the lock."""
+        await self._request(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": self._refresh_token or "",
+            }
+        )
+        self._refresh_proven = True
 
     async def _request(self, extra: dict[str, str]) -> None:
         data = {
@@ -168,7 +254,9 @@ class BeurerAuth:
                     )
                 payload = json.loads(body)
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot reach Beurer SSO: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot reach Beurer SSO: {_describe(err)}"
+            ) from err
         except ValueError as err:  # JSONDecodeError is a ValueError
             # A 200 that is not the token document. Letting a JSONDecodeError escape
             # would bypass every `except BeurerError` in the integration and surface
@@ -183,12 +271,31 @@ class BeurerAuth:
             raise BeurerConnectionError(
                 "Token endpoint returned no access_token"
             ) from err
-        self._refresh_token = payload.get("refresh_token", self._refresh_token)
         try:
             expires_in = float(payload.get("expires_in", 3600))
         except (TypeError, ValueError):
             expires_in = 3600.0
         self._expires_at = time.time() + expires_in
+
+        # A response without a refresh_token keeps the one already held, and so
+        # does a null or empty one.
+        refresh_token = payload.get("refresh_token")
+        if isinstance(refresh_token, str) and refresh_token:
+            changed = refresh_token != self._refresh_token
+            self._refresh_token = refresh_token
+            if changed:
+                self._notify_refresh_token(refresh_token)
+
+    def _notify_refresh_token(self, refresh_token: str) -> None:
+        if self._on_refresh_token is None:
+            return
+        try:
+            self._on_refresh_token(refresh_token)
+        except Exception:
+            # The sign-in itself worked, so it must not be reported as failed; the
+            # cost of not saving is a reauth after the next restart, not an error
+            # now. Logged without the token.
+            _LOGGER.exception("Could not save the new Beurer refresh token")
 
 
 class BeurerClient:
@@ -197,12 +304,20 @@ class BeurerClient:
     def __init__(self, session: aiohttp.ClientSession, auth: BeurerAuth):
         self._session = session
         self._auth = auth
+        # Serialises the read-modify-write of borderValues; see
+        # async_set_border_values.
+        self._border_values_lock = asyncio.Lock()
 
     async def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {await self._auth.async_token()}"}
 
     async def async_list_devices(self, email: str) -> list[dict]:
         """Return the account's devices. Identity only - no live state."""
+        # The email goes in the query string because Beurer's API takes it there; that
+        # is its design, not ours. It means the email is in this request's URL, so
+        # nothing on this path may log or re-raise the URL: errors go through
+        # _describe(), which drops it. (aiohttp's own debug logging is outside our
+        # control, and is the other place the email could surface.)
         try:
             async with self._session.get(
                 DEVICES_URL, params={"email": email}, headers=await self._headers()
@@ -212,7 +327,9 @@ class BeurerClient:
                 resp.raise_for_status()
                 payload = await resp.json()
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot list devices: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot list devices: {_describe(err)}"
+            ) from err
 
         return payload.get("devices", [])
 
@@ -229,35 +346,56 @@ class BeurerClient:
                 resp.raise_for_status()
                 return await resp.json()
         except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot read borderValues: {err}") from err
+            raise BeurerConnectionError(
+                f"Cannot read borderValues: {_describe(err)}"
+            ) from err
 
-    async def async_set_border_values(self, current: dict, **changes) -> None:
-        """Write borderValues.
+    async def async_set_border_values(self, device_id: str, **changes) -> None:
+        """Change some borderValues fields, leaving the others as they are NOW.
 
         The endpoint replaces the whole record rather than patching it, so every
-        field has to be sent back or it is lost. `current` is the last read, which
-        the changes are merged into.
-        """
-        body = {
-            "deviceId": current["deviceId"],
-            "deviceLocation": current.get("deviceLocation", "manual"),
-            "devicePmSensitivity": current.get("devicePmSensitivity", "standard"),
-            "humidMin": current.get("humidMin"),
-            "humidMax": current.get("humidMax"),
-            "tempMin": current.get("tempMin"),
-            "tempMax": current.get("tempMax"),
-        }
-        body.update(changes)
+        field has to be sent back or it is lost. The record is therefore read again
+        here, immediately before the write, and the changes are merged into that.
 
-        try:
-            async with self._session.post(
-                BORDER_VALUES_URL, json=body, headers=await self._headers()
-            ) as resp:
-                if resp.status == 401:
-                    raise BeurerAuthError("Token rejected writing borderValues")
-                resp.raise_for_status()
-        except aiohttp.ClientError as err:
-            raise BeurerConnectionError(f"Cannot write borderValues: {err}") from err
+        Merging into an earlier read - the coordinator's, say, which is only as
+        fresh as the last time something asked - would silently put back the old
+        value of every field that changed in the meantime, for instance a comfort
+        range edited in the Beurer app. Costing one extra GET per write is the
+        price of not reverting somebody's setting.
+        """
+        # Without this, two writes could both read the record before either wrote
+        # it, and the second would revert the first.
+        async with self._border_values_lock:
+            current = await self.async_get_border_values(device_id)
+            if not isinstance(current, dict) or not current:
+                # A write built from nothing would blank every other field.
+                raise BeurerConnectionError(
+                    "borderValues came back empty; refusing to overwrite settings "
+                    "that could not be read"
+                )
+
+            body = {
+                "deviceId": current.get("deviceId") or device_id,
+                "deviceLocation": current.get("deviceLocation", "manual"),
+                "devicePmSensitivity": current.get("devicePmSensitivity", "standard"),
+                "humidMin": current.get("humidMin"),
+                "humidMax": current.get("humidMax"),
+                "tempMin": current.get("tempMin"),
+                "tempMax": current.get("tempMax"),
+            }
+            body.update(changes)
+
+            try:
+                async with self._session.post(
+                    BORDER_VALUES_URL, json=body, headers=await self._headers()
+                ) as resp:
+                    if resp.status == 401:
+                        raise BeurerAuthError("Token rejected writing borderValues")
+                    resp.raise_for_status()
+            except aiohttp.ClientError as err:
+                raise BeurerConnectionError(
+                    f"Cannot write borderValues: {_describe(err)}"
+                ) from err
 
 
 class BeurerHub:
@@ -371,7 +509,7 @@ class BeurerHub:
             # would bypass the coordinator's translation into HomeAssistantError and
             # reach the user as a traceback.
             raise BeurerConnectionError(
-                f"Could not send to the Beurer hub: {err}"
+                f"Could not send to the Beurer hub: {_describe(err)}"
             ) from err
 
     async def _run(self) -> None:
@@ -419,12 +557,14 @@ class BeurerHub:
                 if self._reported_disconnect:
                     _LOGGER.debug(
                         "Beurer hub still unreachable (%s); retrying in %ss",
-                        err,
+                        _describe(err),
                         backoff,
                     )
                 else:
                     _LOGGER.warning(
-                        "Beurer hub connection lost (%s); retrying in %ss", err, backoff
+                        "Beurer hub connection lost (%s); retrying in %ss",
+                        _describe(err),
+                        backoff,
                     )
                     self._reported_disconnect = True
             finally:

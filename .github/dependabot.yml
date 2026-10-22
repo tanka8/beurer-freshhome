@@ -3,6 +3,10 @@ updates:
   # The integration itself has no Python dependencies (manifest requirements is
   # empty), so the actions are the only thing here that goes stale - and CI is
   # already warning that actions/checkout@v4 targets a deprecated Node runtime.
+  #
+  # directory "/" is what makes this ecosystem read .github/workflows/*.yml, which is
+  # where every action is pinned - including the two pinned to a commit
+  # (hacs/action and home-assistant/actions/hassfest).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

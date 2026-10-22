@@ -53,6 +53,20 @@ Night mode is deliberately left alone when changing speed - it appears to be mai
 the display-off setting, and cancelling it as a side effect would turn your display
 back on.
 
+## Blueprint
+
+[`blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml`](blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml)
+runs the purifier at Turbo when PM2.5 has stayed above a threshold, and - optionally -
+returns it to Auto once the air has been clean for a while. It only undoes what it did:
+if you have picked a speed since, that is left alone.
+
+Import it with **Settings, Automations & scenes, Blueprints, Import Blueprint** and
+this URL (it exists once this is on the `main` branch):
+
+```
+https://github.com/tanka8/beurer-freshhome/blob/main/blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml
+```
+
 ## Install
 
 Requires **Home Assistant 2024.11 or newer** — the reauth flow uses helpers added in
@@ -70,7 +84,17 @@ restart.
 Then **Settings, Devices & services, Add integration, Beurer FreshHome**, and sign in
 with your FreshHome account.
 
-## Other models
+## Supported models
+
+Models reported working. "Working" means somebody ran the integration on that model
+and confirmed that the entities above show the right values and the controls do what
+the app does. A model that is not listed is not known to fail - it is just unreported.
+
+| Model | Reported working | Fan speeds | Confirmed in |
+|---|---|---|---|
+| LR-500 (`LR500`) | Yes: every entity and control above | 1-5, where 5 is Turbo | The maintainer's own unit, which the integration was built against (no issue) |
+
+### Other models
 
 If your device is not an LR-500, please open an
 [unsupported model issue](https://github.com/tanka8/beurer-freshhome/issues/new?template=unsupported_model.yml)
@@ -80,13 +104,27 @@ and your email redacted, which is exactly what is needed to add support.
 Fan speed ranges are per model in `const.py`; unknown models fall back to 1-5, which
 may be wrong for yours.
 
+### Adding a model to the table
+
+Use the same issue template, whether the model works out of the box or needed a change:
+
+1. Fill in the *Model* field and attach the diagnostics download (Settings, Devices &
+   services, Beurer FreshHome, the three dots, *Download diagnostics*).
+2. Under *Result*, pick *Everything matches the app* if it does; in the last box, say
+   which entities and controls you checked against the app.
+3. Once the issue shows the model working (as shipped, or after a fix), a row is added
+   with the model, the fan speeds it reports, and a link to that issue. A pull request
+   that adds the row and links the issue is just as welcome.
+
 ## How it works
 
 Two channels, which is the part that is easy to get wrong:
 
 * **REST** - `/api/users/list` returns the account's devices, identity only, **no live
   state**. `/api/devices/borderValues` holds the comfort ranges and the auto
-  sensitivity, and is a full replace on write, not a patch.
+  sensitivity, and is a full replace on write, not a patch - so every write reads
+  the record again first and merges its change into that, rather than into an older
+  read that might predate an edit made in the Beurer app.
 * **SignalR** - `POST /messageHub/negotiate`, then a WebSocket to `/messageHub?id=...`.
   This carries both the live status pushes and the control commands. Frames are
   `0x1e`-delimited JSON; the client invokes `SendCommand`, the server pushes
@@ -95,6 +133,34 @@ Two channels, which is the part that is easy to get wrong:
 Auth is an OAuth2 password grant against `https://sso.connect.beurer.com/connect/token`.
 The `client_id` and `client_secret` in `const.py` are constants embedded in the app,
 identical for every FreshHome user - they are not account secrets.
+
+### What is stored: a refresh token, not your password
+
+Your password is used to sign in, and then Home Assistant keeps the OAuth **refresh
+token** Beurer returns instead (`refresh_token` in the config entry), so the password
+does not sit in `.storage` or in your backups. Beurer may rotate that token each time
+it is used; every new one is saved straight away.
+
+The password is only dropped once it is safe to:
+
+* the token has been saved, **and** Beurer has accepted it for a real refresh. A token
+  that is issued but then refused would otherwise send you to the reauth prompt every
+  time the access token expires;
+* if Beurer issues no refresh token, or will not honour the one it issues, the entry
+  keeps the password and works exactly as it always has.
+
+**Upgrading** needs nothing from you. The entry is marked as version 1.2 when Home
+Assistant starts, signs in once with the password it still has, saves the token,
+proves it, and then removes the password - all in that first start. If Beurer is
+unreachable at that moment, it simply tries again at the next start.
+
+**If the refresh token stops working** (Beurer revoked it, or Home Assistant was off
+for longer than it lives), Home Assistant shows *Re-authentication required*. Enter
+your password once; a new token is saved and the password is not. A rejected app
+`client_secret` (see below) is told apart and does **not** ask for a password.
+
+The refresh token can sign in to your Beurer account until Beurer revokes it, so
+treat a backup of the config entry as you would treat a saved password.
 
 ### If sign-in suddenly stops working for everyone
 
@@ -139,10 +205,13 @@ python -m pytest                 # tests/ - no Home Assistant needed, any platfo
 `tests/` replays real captured SignalR frames through the parser, with no network and
 no credentials. It covers the status decoding, per-device dispatch, that command
 echoes are not mistaken for state, that keepalive pings are answered, the model
-fallbacks, and the classification of rejected token requests.
+fallbacks, the classification of rejected token requests, refresh-token rotation, and
+that a borderValues write never reverts a setting changed since it was last read.
 
-`tests_ha/` runs the config flow through Home Assistant itself using
-`pytest-homeassistant-custom-component`. **That harness does not work on Windows** -
+`tests_ha/` runs the config flow, setup, migration of an old entry, reauth and
+diagnostics through Home Assistant itself using
+`pytest-homeassistant-custom-component`, with Beurer's HTTP endpoints mocked.
+**That harness does not work on Windows** -
 its autouse fixtures need a socketpair that `pytest-socket` blocks - so those run on
 Linux in CI. See `tests_ha/README.md`.
 

@@ -22,7 +22,9 @@ jobs:
       # tests import the api module directly, so it is needed here.
       - run: pip install pytest aiohttp ruff
       - run: python -m ruff check custom_components/ tests/ tests_ha/ scripts/
-      - run: python -m ruff format --check custom_components/ tests/ tests_ha/ scripts/
+      # --diff prints what would change, so a failure says what to fix rather than
+      # only naming the file.
+      - run: python -m ruff format --check --diff custom_components/ tests/ tests_ha/ scripts/
       - run: python -m pytest tests/ -v
 
   config-flow-tests:
@@ -44,7 +46,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: home-assistant/actions/hassfest@master
+      # Pinned to a commit rather than @master, for the same reason as hacs/action
+      # below: a mutable ref lets an upstream push change what runs in our CI.
+      # home-assistant/actions has only a 1.0.0 tag, from 2020 and 165 commits
+      # behind, and documents @master as the way to use it - so, as with hacs/action,
+      # a tag is not an option. The commit is master as of 2026-10-17; Dependabot's
+      # github-actions ecosystem (.github/dependabot.yml) scans this file.
+      - uses: home-assistant/actions/hassfest@cd6f3635a740c84d8a14f6121a90068b8ece6bf6 # master
 
   hacs:
     runs-on: ubuntu-latest

@@ -1,0 +1,134 @@
+blueprint:
+  name: Beurer FreshHome - Turbo when PM2.5 is high
+  description: >-
+    Runs a Beurer air purifier at Turbo (its top fan speed) when PM2.5 has stayed
+    above a threshold for a while, and optionally hands it back to Auto once the air
+    has been clean for a while.
+
+
+    Choosing a speed takes the purifier out of Auto (that is how the device works, and
+    what this integration does for any speed), so returning to Auto is a separate
+    step. It is only taken if the purifier is still at Turbo in manual mode - a speed
+    or mode you chose yourself in the meantime is left alone.
+
+
+    The two thresholds are a pair: keep "clean below" lower than "Turbo above", or the
+    purifier will be switched back and forth.
+  domain: automation
+  source_url: https://github.com/tanka8/beurer-freshhome/blob/main/blueprints/automation/beurer_freshhome/turbo_on_high_pm25.yaml
+  homeassistant:
+    min_version: 2024.11.0
+  input:
+    pm25_sensor:
+      name: PM2.5 sensor
+      description: The PM2.5 sensor of the purifier.
+      selector:
+        entity:
+          filter:
+            - integration: beurer_freshhome
+              domain: sensor
+              device_class: pm25
+    purifier:
+      name: Air purifier
+      description: The fan entity of the same purifier.
+      selector:
+        entity:
+          filter:
+            - integration: beurer_freshhome
+              domain: fan
+    high_threshold:
+      name: Turbo above
+      description: PM2.5 level above which the purifier is set to Turbo.
+      default: 20
+      selector:
+        number:
+          min: 1
+          max: 500
+          unit_of_measurement: "µg/m³"
+          mode: box
+    high_for:
+      name: ...for at least
+      description: How long PM2.5 must stay above that level, so a short spike is ignored.
+      default:
+        hours: 0
+        minutes: 5
+        seconds: 0
+      selector:
+        duration:
+    restore_auto:
+      name: Go back to Auto when the air is clean
+      default: true
+      selector:
+        boolean:
+    low_threshold:
+      name: Air is clean below
+      description: >-
+        PM2.5 level below which the air counts as clean again. Only used when going
+        back to Auto is turned on. Keep it lower than "Turbo above".
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 500
+          unit_of_measurement: "µg/m³"
+          mode: box
+    low_for:
+      name: ...for at least
+      description: >-
+        How long PM2.5 must stay below that level before going back to Auto. Only used
+        when going back to Auto is turned on.
+      default:
+        hours: 0
+        minutes: 15
+        seconds: 0
+      selector:
+        duration:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  restore_auto: !input restore_auto
+  purifier: !input purifier
+
+triggers:
+  - trigger: numeric_state
+    id: dirty
+    entity_id: !input pm25_sensor
+    above: !input high_threshold
+    for: !input high_for
+  - trigger: numeric_state
+    id: clean
+    entity_id: !input pm25_sensor
+    below: !input low_threshold
+    for: !input low_for
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: dirty
+        sequence:
+          # 100% is the top speed whatever the model's speed range is. turn_on also
+          # switches the purifier on if it was off, which is the point of the alert.
+          - action: fan.turn_on
+            target:
+              entity_id: !input purifier
+            data:
+              percentage: 100
+      - conditions:
+          - condition: trigger
+            id: clean
+          # Only undo what this automation did: the purifier must still be at Turbo
+          # in manual mode, so a speed or mode chosen since is left alone.
+          - condition: template
+            value_template: >-
+              {{ restore_auto
+                 and state_attr(purifier, 'percentage') == 100
+                 and state_attr(purifier, 'preset_mode') == 'manual' }}
+        sequence:
+          - action: fan.set_preset_mode
+            target:
+              entity_id: !input purifier
+            data:
+              preset_mode: auto

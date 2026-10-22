@@ -14,8 +14,14 @@ from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import HomeAssistant
 
 from . import BeurerConfigEntry
+from .const import CONF_REFRESH_TOKEN
 
-REDACT_CONFIG = {CONF_EMAIL, CONF_PASSWORD}
+# Every value in the entry's data is a credential or identifies the account, so all
+# of them are redacted - these three by name, and anything else the entry ever gains
+# by the key being present (see below). The keys themselves stay visible, which is
+# useful in a bug report: it shows whether the entry holds a password or a refresh
+# token without showing either.
+REDACT_CONFIG = {CONF_EMAIL, CONF_PASSWORD, CONF_REFRESH_TOKEN}
 # deviceId embeds the device's MAC address.
 REDACT_DEVICE = {"id", "deviceId"}
 
@@ -37,7 +43,7 @@ async def async_get_config_entry_diagnostics(
 ) -> dict[str, Any]:
     data = entry.runtime_data
     return {
-        "config": async_redact_data(dict(entry.data), REDACT_CONFIG),
+        "config": async_redact_data(dict(entry.data), REDACT_CONFIG | set(entry.data)),
         "hub_connected": data.hub.connected,
         "devices": [
             {
